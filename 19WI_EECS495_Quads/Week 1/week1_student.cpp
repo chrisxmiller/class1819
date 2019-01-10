@@ -11,6 +11,7 @@
 #include <curses.h>
 
 //gcc -o week1 week_1.cpp -lwiringPi -lncurses -lm
+// Copy from local while on local to remote scp /tmp/file user@example.com:/home/name/dir
 
 #define frequency 25000000.0
 #define CONFIG           0x1A
@@ -65,32 +66,46 @@ int main (int argc, char *argv[])
     setup_imu();
     calibrate_imu();
     
- 
-    
     while(1)
     {
       read_imu();      
       update_filter();   
 
-     
+      //Where we write to a file and print the values for plotting 
+
     }
-      
-    
-   
-  
 }
 
 void calibrate_imu()
 {
- 
-  /*
-  x_gyro_calibration=??
-  y_gyro_calibration=??
-  z_gyro_calibration=??
-  roll_calibration=??
-  pitch_calibration=??
-  accel_z_calibration=??
-  */
+  //Read the IMU n times; reqs says set n to 1000 
+  int n = 1000;
+
+  //Local variables for calibration only 
+  float temp_data[3]
+
+  //Averahe
+  for(int i = 0; i < n; i++){
+    //Read the IMU
+    read_imu();
+
+    //Capture the baseline values 
+    for(int j = 0; j < 3; j++){
+      //Temp variable 0-2 maps to gyrp in imu data of \in [0,2]
+      temp_data[j] += imu_data[j] / float(n); 
+    }
+  }  
+
+  //Update the global constants, profit
+  x_gyro_calibration = temp_data[0];
+  y_gyro_calibration = temp_data[1];
+  z_gyro_calibration = temp_data[2];
+
+  
+  // roll_calibration=??
+  // pitch_calibration=??
+  // accel_z_calibration=??
+  
 printf("calibration complete, %f %f %f %f %f %f\n\r",x_gyro_calibration,y_gyro_calibration,z_gyro_calibration,roll_calibration,pitch_calibration,accel_z_calibration);
 
 
@@ -98,7 +113,7 @@ printf("calibration complete, %f %f %f %f %f %f\n\r",x_gyro_calibration,y_gyro_c
 
 void read_imu()
 {
-  int address=0;//todo: set address value for accel x value 
+  int address=0x38;//complete: set address value for accel x value 
   float ax=0;
   float az=0;
   float ay=0; 
@@ -114,10 +129,10 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
-  imu_data[3]=0;//  todo: convert vw from raw values to "g's"
+  imu_data[3]= float(vw)/16384.0;//complete: convert vw from raw values to "g's"
   
   
-  address=0;//todo: set address value for accel y value
+  address=0x3D;//complete: set address value for accel y value
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
   vw=(((vh<<8)&0xff00)|(vl&0x00ff))&0xffff;
@@ -126,10 +141,10 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
-  imu_data[4]=0;//Todo: convert vw from raw valeus to "g's"
+  imu_data[4]=float(vw)/16384.0;//complete: convert vw from raw valeus to "g's"
   
   
-  address=0;//todo: set addres value for accel z value;
+  address=0x3F;//complete: set addres value for accel z value;
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
   vw=(((vh<<8)&0xff00)|(vl&0x00ff))&0xffff;
@@ -138,10 +153,10 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
-  imu_data[5]=0;//todo: convert vw from raw values to g's
+  imu_data[5]=float(vw)/16384.0;//complete: convert vw from raw values to g's
   
   
-  address=0;//todo: set addres value for gyro x value;
+  address=0x43;//complete: set addres value for gyro x value;
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
   vw=(((vh<<8)&0xff00)|(vl&0x00ff))&0xffff;
@@ -150,9 +165,9 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
-  imu_data[0]=x_gyro_calibration+0;////todo: convert vw from raw values to degrees/second
+  imu_data[0]=x_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
   
-  address=0;//todo: set addres value for gyro y value;
+  address=0x45;//complete: set addres value for gyro y value;
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
   vw=(((vh<<8)&0xff00)|(vl&0x00ff))&0xffff;
@@ -161,9 +176,9 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
- imu_data[1]=y_gyro_calibration+0;////todo: convert vw from raw values to degrees/second
+ imu_data[1]=y_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
   
-  address=0;////todo: set addres value for gyro z value;
+  address=0x47;////complete: set addres value for gyro z value;
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
   vw=(((vh<<8)&0xff00)|(vl&0x00ff))&0xffff;
@@ -172,7 +187,7 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
-  imu_data[2]=z_gyro_calibration+0;////todo: convert vw from raw values to degrees/second
+  imu_data[2]=z_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
   
  
 
