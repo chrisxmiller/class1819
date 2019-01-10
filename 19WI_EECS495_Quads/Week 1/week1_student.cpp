@@ -84,7 +84,7 @@ void calibrate_imu()
   int n = 1000;
 
   //Local variables for calibration only 
-  float temp_data[3];
+  float temp_data[6];
 
   //Averahe
   for(int i = 0; i < n; i++){
@@ -92,25 +92,32 @@ void calibrate_imu()
     read_imu();
 
     //Capture the baseline values 
-    for(int j = 0; j < 3; j++){
+    for(int j = 0; j < 4; j++){
       //Temp variable 0-2 maps to gyrp in imu data of \in [0,2]
-      temp_data[j] += imu_data[j]; 
+      if(i < 3){
+        temp_data[j] += imu_data[j]; 
+      }
+      //For the z calibration
+      else{
+        temp[j+2] += imu_data[j+2];
+      }
     }
+    //roll_calibration y-z is roll
+    temp_data[3] += atan2(imu_data[4],imu_data[5]);
+
+    //pitch_calibration x-z is pitch  
+    temp_data[4] += atan2(imu_data[3],imu_data[5]);
   }  
 
   //Update the global constants, profit
   x_gyro_calibration = temp_data[0] / float(n);
   y_gyro_calibration = temp_data[1] / float(n);
   z_gyro_calibration = temp_data[2] / float(n);
-
-  
-  // roll_calibration=??
-  // pitch_calibration=??
-  // accel_z_calibration=??
+  roll_calibration =  (temp_data[3] / float(n)) * (360.0/(2*M_PI));
+  pitch_calibration = (temp_data[4] / float(n)) * (360.0/(2*M_PI));
+  accel_z_calibration = temp_data[5] / float(n);
   
 printf("calibration complete, %f %f %f %f %f %f\n\r",x_gyro_calibration,y_gyro_calibration,z_gyro_calibration,roll_calibration,pitch_calibration,accel_z_calibration);
-
-
 }
 
 void read_imu()
@@ -143,7 +150,7 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
-  imu_data[4]=float(vw)/16384.0;//complete: convert vw from raw valeus to "g's"
+  imu_data[4] = float(vw) / 16384.0;//complete: convert vw from raw valeus to "g's"
   
   
   address=0x3F;//complete: set addres value for accel z value;
