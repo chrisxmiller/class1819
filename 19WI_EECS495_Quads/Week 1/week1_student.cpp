@@ -72,6 +72,8 @@ int main (int argc, char *argv[])
       update_filter();   
 
       //Where we write to a file and print the values for plotting 
+      printf("Gyro Values, %f %f %f %f %f %f\n\r",imu_data[0],imu_data[1],imu_data[2],roll_calibration,pitch_calibration,accel_z_calibration);
+
 
     }
 }
@@ -82,7 +84,7 @@ void calibrate_imu()
   int n = 1000;
 
   //Local variables for calibration only 
-  float temp_data[3]
+  float temp_data[3];
 
   //Averahe
   for(int i = 0; i < n; i++){
@@ -92,14 +94,14 @@ void calibrate_imu()
     //Capture the baseline values 
     for(int j = 0; j < 3; j++){
       //Temp variable 0-2 maps to gyrp in imu data of \in [0,2]
-      temp_data[j] += imu_data[j] / float(n); 
+      temp_data[j] += imu_data[j]; 
     }
   }  
 
   //Update the global constants, profit
-  x_gyro_calibration = temp_data[0];
-  y_gyro_calibration = temp_data[1];
-  z_gyro_calibration = temp_data[2];
+  x_gyro_calibration = temp_data[0] / float(n);
+  y_gyro_calibration = temp_data[1] / float(n);
+  z_gyro_calibration = temp_data[2] / float(n);
 
   
   // roll_calibration=??
@@ -165,7 +167,7 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
-  imu_data[0]=x_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
+  imu_data[0]=-x_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
   
   address=0x45;//complete: set addres value for gyro y value;
   vh=wiringPiI2CReadReg8(imu,address);
@@ -176,7 +178,7 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
- imu_data[1]=y_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
+ imu_data[1]=-y_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
   
   address=0x47;////complete: set addres value for gyro z value;
   vh=wiringPiI2CReadReg8(imu,address);
@@ -187,7 +189,7 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
-  imu_data[2]=z_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
+  imu_data[2]=-z_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
   
  
 
