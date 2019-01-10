@@ -55,9 +55,9 @@ float imu_data[6]; //gyro xyz, accel xyz
 long time_curr;
 long time_prev;
 struct timespec te;
-float yaw=0;
-float pitch_angle=0;
-float roll_angle=0;
+float yaw = 0;
+float pitch_angle = 0;
+float roll_angle = 0;
 
  
 int main (int argc, char *argv[])
@@ -69,11 +69,18 @@ int main (int argc, char *argv[])
     while(1)
     {
       read_imu();      
-      update_filter();   
+      update_filter();
+
+      //Get roll and pitch with atan2 
+      // y-z is roll
+      roll_angle = (atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
+
+      // x-z is pitch  
+      pitch_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
 
       //Where we write to a file and print the values for plotting 
-      printf("Gyro Values, %f %f %f %f %f %f\n\r",imu_data[0],imu_data[1],imu_data[2],roll_calibration,pitch_calibration,accel_z_calibration);
-
+      printf("x-gy: %f, y-gy: %f, z-gy: %f, roll: %f, pitch: %f \n\r",imu_data[0],imu_data[1],imu_data[2],roll_angle,pitch_angle);
+     // printf("calibration complete, %f %f %f %f %f %f\n\r",x_gyro_calibration,y_gyro_calibration,z_gyro_calibration,roll_calibration,pitch_calibration,accel_z_calibration);
 
     }
 }
@@ -92,21 +99,15 @@ void calibrate_imu()
     read_imu();
 
     //Capture the baseline values 
-    for(int j = 0; j < 4; j++){
-      //Temp variable 0-2 maps to gyrp in imu data of \in [0,2]
-      if(i < 3){
-        temp_data[j] += imu_data[j]; 
-      }
-      //For the z calibration
-      else{
-        temp[j+2] += imu_data[j+2];
-      }
-    }
+    temp_data[0] += imu_data[0]; //x
+    temp_data[1] += imu_data[1]; //y
+    temp_data[2] += imu_data[2]; //z
+
     //roll_calibration y-z is roll
-    temp_data[3] += atan2(imu_data[4],imu_data[5]);
+    temp_data[3] += atan2(imu_data[4],-imu_data[5]);
 
     //pitch_calibration x-z is pitch  
-    temp_data[4] += atan2(imu_data[3],imu_data[5]);
+    temp_data[4] += atan2(imu_data[3],-imu_data[5]);
   }  
 
   //Update the global constants, profit
@@ -115,19 +116,20 @@ void calibrate_imu()
   z_gyro_calibration = temp_data[2] / float(n);
   roll_calibration =  (temp_data[3] / float(n)) * (360.0/(2*M_PI));
   pitch_calibration = (temp_data[4] / float(n)) * (360.0/(2*M_PI));
-  accel_z_calibration = temp_data[5] / float(n);
+ // accel_z_calibration = temp_data[5] / float(n);
   
 printf("calibration complete, %f %f %f %f %f %f\n\r",x_gyro_calibration,y_gyro_calibration,z_gyro_calibration,roll_calibration,pitch_calibration,accel_z_calibration);
 }
 
 void read_imu()
 {
-  int address=0x38;//complete: set address value for accel x value 
+  int address=0x3B;//complete: set address value for accel x value 
   float ax=0;
   float az=0;
   float ay=0; 
   int vh,vl;
   
+  // --- X Accel --- 
   //read in data
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
@@ -140,7 +142,7 @@ void read_imu()
   }          
   imu_data[3]= float(vw)/16384.0;//complete: convert vw from raw values to "g's"
   
-  
+  // --- Y ACCEL --- 
   address=0x3D;//complete: set address value for accel y value
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
@@ -152,7 +154,7 @@ void read_imu()
   }          
   imu_data[4] = float(vw) / 16384.0;//complete: convert vw from raw valeus to "g's"
   
-  
+  // --- Z ACCEL --- 
   address=0x3F;//complete: set addres value for accel z value;
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
@@ -164,7 +166,7 @@ void read_imu()
   }          
   imu_data[5]=float(vw)/16384.0;//complete: convert vw from raw values to g's
   
-  
+  // --- X GYRO --- 
   address=0x43;//complete: set addres value for gyro x value;
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
@@ -176,6 +178,7 @@ void read_imu()
   }          
   imu_data[0]=-x_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
   
+  // --- Y GYRO ---
   address=0x45;//complete: set addres value for gyro y value;
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
@@ -185,8 +188,10 @@ void read_imu()
     vw=vw ^ 0xffff;
     vw=-vw-1;
   }          
- imu_data[1]=-y_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
-  
+  imu_data[1]=-y_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
+  //imu_data[1]=(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
+
+  // --- Z GYRO ---
   address=0x47;////complete: set addres value for gyro z value;
   vh=wiringPiI2CReadReg8(imu,address);
   vl=wiringPiI2CReadReg8(imu,address+1);
@@ -197,10 +202,7 @@ void read_imu()
     vw=-vw-1;
   }          
   imu_data[2]=-z_gyro_calibration+(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
-  
- 
-
-
+  //imu_data[2]=(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
 }
 
 void update_filter()
@@ -222,6 +224,7 @@ void update_filter()
   time_prev=time_curr;
   
   //comp. filter for roll, pitch here: 
+
 }
 
 
