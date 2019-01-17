@@ -9,7 +9,8 @@
 #include <sys/shm.h>
 #include <sys/stat.h>
 #include <curses.h>
-
+// #include <cstring>
+// using namespace std;
 //gcc -o week1 week_1.cpp -lwiringPi -lncurses -lm
 // Copy from local while on local to remote scp /tmp/file user@example.com:/home/name/dir
 
@@ -19,9 +20,10 @@
 #define GYRO_CONFIG      0x1B
 #define ACCEL_CONFIG     0x1C
 #define ACCEL_CONFIG2    0x1D
-#define USER_CTRL        0x6A  // Bit 7 enable DMP, bit 3 reset DMP
+#define USER_CTRL        0x6A // Bit 7 enable DMP, bit 3 reset DMP
 #define PWR_MGMT_1       0x6B // Device defaults to the SLEEP mode
 #define PWR_MGMT_2       0x6C
+#define A_CONST          0.02 //Filter constant 
 
 
 enum Ascale {
@@ -58,6 +60,17 @@ struct timespec te;
 float yaw = 0;
 float pitch_angle = 0;
 float roll_angle = 0;
+float imu_diff = 0.0;
+
+//New variables for comp. filter
+float pitch_filt_now = 0.0;
+float roll_filt_now = 0.0;
+
+float pitch_filt_old = 0.0;
+float roll_filt_old = 0.0;
+
+float roll_int = 0.0;
+float pitch_int = 0.0;
 
  
 int main (int argc, char *argv[])
@@ -78,10 +91,8 @@ int main (int argc, char *argv[])
       // x-z is pitch  
       pitch_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
 
-      //Where we write to a file and print the values for plotting 
-      printf("x-gy: %f, y-gy: %f, z-gy: %f, roll: %f, pitch: %f \n\r",imu_data[0],imu_data[1],imu_data[2],roll_angle,pitch_angle);
-     // printf("calibration complete, %f %f %f %f %f %f\n\r",x_gyro_calibration,y_gyro_calibration,z_gyro_calibration,roll_calibration,pitch_calibration,accel_z_calibration);
-
+      // printf("%f,%f,%f\n",-roll_int,roll_angle,roll_filt_now);
+      printf("%f,%f,%f\n",-pitch_int,pitch_angle,pitch_filt_now);
     }
 }
 
@@ -118,7 +129,7 @@ void calibrate_imu()
   pitch_calibration = (temp_data[4] / float(n)) * (360.0/(2*M_PI));
  // accel_z_calibration = temp_data[5] / float(n);
   
-printf("calibration complete, %f %f %f %f %f %f\n\r",x_gyro_calibration,y_gyro_calibration,z_gyro_calibration,roll_calibration,pitch_calibration,accel_z_calibration);
+//printf("calibration complete, %f %f %f %f %f %f\n\r",x_gyro_calibration,y_gyro_calibration,z_gyro_calibration,roll_calibration,pitch_calibration,accel_z_calibration);
 }
 
 void read_imu()
@@ -207,12 +218,12 @@ void read_imu()
 
 void update_filter()
 {
-
   //get current time in nanoseconds
   timespec_get(&te,TIME_UTC);
   time_curr=te.tv_nsec;
+
   //compute time since last execution
-  float imu_diff=time_curr-time_prev;           
+  imu_diff = time_curr - time_prev;           
   
   //check for rollover
   if(imu_diff<=0)
@@ -223,7 +234,15 @@ void update_filter()
   imu_diff=imu_diff/1000000000;
   time_prev=time_curr;
   
-  //comp. filter for roll, pitch here: 
+  //comp. filter for roll
+  roll_int = roll_int + imu_data[0]*imu_diff;
+  roll_filt_now = (roll_angle*A_CONST) + (1.0-A_CONST)*(-imu_data[0]*imu_diff+roll_filt_old);
+  roll_filt_old = roll_filt_now;
+
+  //comp. filter for pitch
+  pitch_int = pitch_int + imu_data[1]*imu_diff;
+  pitch_filt_now = (pitch_angle*A_CONST) + (1.0-A_CONST)*(-imu_data[1]*imu_data+pitch_filt_old)
+  pitch_filt_old = pitch_filt_now;
 
 }
 
