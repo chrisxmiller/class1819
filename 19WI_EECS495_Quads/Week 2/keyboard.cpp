@@ -13,8 +13,6 @@ struct Keyboard {
 };
 
 
-
-
 int main ()
 {
     WINDOW *w =initscr();

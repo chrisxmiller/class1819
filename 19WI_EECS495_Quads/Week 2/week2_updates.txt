@@ -35,11 +35,7 @@ void setup_keyboard()
 //when cntrl+c pressed, kill motors
 
 void trap(int signal)
-
 {
-
-   
- 
    printf("ending program\n\r");
 
    run_program=0;
