@@ -69,6 +69,9 @@ float yaw = 0;
 float pitch_angle = 0;
 float roll_angle = 0;
 float imu_diff = 0.0;
+float timer;
+long timer_now;
+long timer_old;
 
 //New variables for comp. filter
 float pitch_filt_now = 0.0;
@@ -80,12 +83,23 @@ float roll_filt_old = 0.0;
 float roll_int = 0.0;
 float pitch_int = 0.0;
 
+//heart beat stuff
+int hb_new = 0;
+int hb_old = 0;
+
 Keyboard* shared_memory; 
 int run_program=1;
 
 //when cntrl+c pressed, kill motors
 void trap(int signal)
 {
+   if(signal == 1){
+        printf("Space Pressed! \n\r");
+   } 
+    if(signal == 2){
+        printf("Keyboard Timeout \n\r");
+   }
+
    printf("ending program\n\r");
    run_program=0;
 }
@@ -98,11 +112,49 @@ int main (int argc, char *argv[])
     setup_keyboard();
     signal(SIGINT, &trap);
 
-    //to refresh values from shared memory first 
-    Keyboard keyboard=*shared_memory;
-
-    while(1)
+    while(run_program == 1)
     {
+      //to refresh values from shared memory first 
+      Keyboard keyboard=*shared_memory;
+      
+      //if space, call trap
+      if(keyboard.key_press == ' '){
+          trap(1);
+          break;
+      }
+      //if no heart beat, start timer 
+        hb_new = keyboard.heartbeat;
+        printf("heartbeat: %d heartbeatold: %d\n\r",hb_new,hb_old);
+
+        //check
+        if(hb_new == hb_old){
+            //get current time in nanoseconds
+            timespec_get(&te,TIME_UTC);
+            timer_now=te.tv_nsec;
+
+            //compute time since last execution
+            timer = timer_now - timer_old;           
+            
+            //check for rollover
+            if(timer<=0)
+            {
+                timer+=1000000000;
+            }
+            //convert to seconds
+            timer = timer / 1000000000;
+
+            //check if 0.25s have passed
+            if(timer >= 0.250){
+                trap(2);
+            }    
+        }
+        else{
+            hb_old = hb_new; 
+            //get time 
+            timespec_get(&te,TIME_UTC);
+            timer_old = te.tv_nsec; 
+        }
+
       read_imu();      
       update_filter();
 
@@ -113,13 +165,11 @@ int main (int argc, char *argv[])
       // x-z is pitch  
       pitch_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
 
-      // printf("%f,%f,%f\n",-roll_int,roll_angle,roll_filt_now);
-      printf("%f,%f,%f\n",pitch_int,pitch_angle,pitch_filt_now);
     }
+    return 0;
 }
 
-void calibrate_imu()
-{
+void calibrate_imu(){
   //Read the IMU n times; reqs says set n to 1000 
   int n = 1000;
 
@@ -150,10 +200,9 @@ void calibrate_imu()
   roll_calibration =  (temp_data[3] / float(n)) * (360.0/(2*M_PI));
   pitch_calibration = (temp_data[4] / float(n)) * (360.0/(2*M_PI));
  // accel_z_calibration = temp_data[5] / float(n);
-  }
+}
 
-void read_imu()
-{
+void read_imu(){
   int address=0x3B;//complete: set address value for accel x value 
   float ax=0;
   float az=0;
@@ -236,8 +285,7 @@ void read_imu()
   //imu_data[2]=(float(vw)/32768.0)*500.0;////complete: convert vw from raw values to degrees/second
 }
 
-void update_filter()
-{
+void update_filter(){
   //get current time in nanoseconds
   timespec_get(&te,TIME_UTC);
   time_curr=te.tv_nsec;
@@ -266,8 +314,7 @@ void update_filter()
 
 }
 
-int setup_imu()
-{
+int setup_imu(){
   wiringPiSetup ();
   
   
@@ -310,8 +357,7 @@ int setup_imu()
   return 0;
 }
 
-void setup_keyboard()
-{
+void setup_keyboard(){
   int segment_id;   
   struct shmid_ds shmbuffer; 
   int segment_size; 
