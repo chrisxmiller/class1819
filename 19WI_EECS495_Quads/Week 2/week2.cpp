@@ -52,6 +52,8 @@ void calibrate_imu();
 void read_imu();    
 void update_filter();
 void setup_keyboard();
+void update_Time();
+void safety_check(Keyboard keyboard);
 
 //global variables
 int imu;
@@ -91,82 +93,45 @@ Keyboard* shared_memory;
 int run_program=1;
 
 //when cntrl+c pressed, kill motors
-void trap(int signal)
-{
-   if(signal == 1){
-        printf("Space Pressed! \n\r");
-   } 
-    if(signal == 2){
-        printf("Keyboard Timeout \n\r");
-   }
-
+void trap(int signal){
+  if(signal == 1){
+    printf("Space Pressed! \n\r");
+  } 
+  if(signal == 2){
+    printf("Keyboard Timeout \n\r");
+  }
+  if(signal == 3){
+    printf("Gyrorate Timeout \n\r");
+  }
+  if(signal == 4){
+    printf("Roll or Pitch Timeout \n\r");
+  }
    printf("ending program\n\r");
    run_program=0;
 }
  
-int main (int argc, char *argv[])
-{
-    //Init Functions 
-    setup_imu();
-    calibrate_imu();
-    setup_keyboard();
-    signal(SIGINT, &trap);
+int main (int argc, char *argv[]){
+  //Init Functions 
+  setup_imu();
+  calibrate_imu();
+  setup_keyboard();
+  signal(SIGINT, &trap);
 
-    while(run_program == 1)
-    {
-      //to refresh values from shared memory first 
-      Keyboard keyboard=*shared_memory;
-      
-      //if space, call trap
-      if(keyboard.key_press == ' '){
-          trap(1);
-          break;
-      }
-      //if no heart beat, start timer 
-        hb_new = keyboard.heartbeat;
-        printf("heartbeat: %d heartbeatold: %d\n\r",hb_new,hb_old);
+  while(run_program == 1){
+    //to refresh values from shared memory first 
+    //Keyboard keyboard=*shared_memory;
+    //Run the safety check function 
+    safety_check(*shared_memory);
+    read_imu();      
+    update_filter();
 
-        //check
-        if(hb_new == hb_old){
-            //get current time in nanoseconds
-            timespec_get(&te,TIME_UTC);
-            timer_now=te.tv_nsec;
-
-            //compute time since last execution
-            timer = timer_now - timer_old;           
-            
-            //check for rollover
-            if(timer<=0)
-            {
-                timer+=1000000000;
-            }
-            //convert to seconds
-            timer = timer / 1000000000;
-
-            //check if 0.25s have passed
-            if(timer >= 0.250){
-                trap(2);
-            }    
-        }
-        else{
-            hb_old = hb_new; 
-            //get time 
-            timespec_get(&te,TIME_UTC);
-            timer_old = te.tv_nsec; 
-        }
-
-      read_imu();      
-      update_filter();
-
-      //Get roll and pitch with atan2 
-      // y-z is roll
-      roll_angle = (atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
-
-      // x-z is pitch  
-      pitch_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
-
-    }
-    return 0;
+    //Get roll and pitch with atan2 
+    // y-z is roll
+    roll_angle = (atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
+    // x-z is pitch  
+    pitch_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
+  }
+  return 0;
 }
 
 void calibrate_imu(){
@@ -376,4 +341,61 @@ void setup_keyboard(){
   /* Write a string to the shared memory segment.  */ 
   //sprintf (shared_memory, "test!!!!."); 
 
+}
+
+void update_Time(){
+ //get current time in nanoseconds
+  timespec_get(&te,TIME_UTC);
+  timer_now=te.tv_nsec;
+
+  //compute time since last execution
+  timer = timer_now - timer_old;           
+            
+  //check for rollover
+  if(timer<=0){
+    timer+=1000000000;
+  }
+  //convert to seconds
+  timer = timer / 1000000000;
+}
+
+void safety_check(Keyboard keyboard){
+  //if space, call trap
+  if(keyboard.key_press == ' '){
+    trap(1);
+  }
+  
+  //if no heart beat, start timer 
+  hb_new = keyboard.heartbeat;
+  //check heartbeat 
+  if(hb_new == hb_old){
+      update_Time();
+      //check if 0.25s have passed
+      if(timer >= 0.25){
+        trap(2);
+      }    
+  }
+  //Check gyrorate error 
+  else if(abs(imu_data[0]) > 300.0 || abs(imu_data[1]) > 300.0 || abs(imu_data[2]) > 300.0){
+      update_Time();
+      //check if 0.10s have passed
+      if(timer >= 0.10){
+        trap(3);
+      }    
+  }
+  //Roll or Pitch angle 
+  else if(abs(pitch_filt_now) > 45.0 || abs(roll_filt_now) > 45.0 ){
+      update_Time();
+      //check if 0.10s have passed
+      if(timer >= 0.10){
+        trap(4);
+      }   
+  }
+  //Heartbeat updated, no space, no ctrl+c, no roll, pitch, gyro errors, let run. 
+  else{
+      hb_old = hb_new; 
+      //get time 
+      timespec_get(&te,TIME_UTC);
+      timer_old = te.tv_nsec; 
+  }
 }
