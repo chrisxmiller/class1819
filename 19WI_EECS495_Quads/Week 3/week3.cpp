@@ -33,7 +33,7 @@
 #define LED0_OFF_H 0x9		
 #define LED_MULTIPLYER 4
 #define NEUTRAL_POWER 1100
-#define P 10
+#define P 5
 
 enum Ascale {
   AFS_2G = 0,
@@ -66,7 +66,7 @@ void safety_check(Keyboard keyboard);
 void init_motor(uint8_t channel);
 void init_pwm();
 void set_PWM(uint8_t channel, float time_on_us);
-int pid_update(float setpoint, float pitch, float roll);
+void pid_update(float pitch, float roll);
 
 //global variables
 int imu;
@@ -107,6 +107,10 @@ int run_program=1;
 // motor pwm 
 int pwm;
 
+//Pitch PID controller 
+float m02 = 0;
+float m13 = 0;
+
 //when ctrl+c pressed, kill motors
 void trap(int signal){
   if(signal == 1){
@@ -146,7 +150,7 @@ int main (int argc, char *argv[]){
     //to refresh values from shared memory first 
     //Keyboard keyboard=*shared_memory;
     //Run the safety check function 
-    //safety_check(*shared_memory);
+    safety_check(*shared_memory);
     read_imu();      
     update_filter();
 
@@ -156,8 +160,8 @@ int main (int argc, char *argv[]){
     // x-z is pitch  
     pitch_angle = (atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
 
-    //printf("%f\n\r",pitch_filt_now);
-    printf("%f\n\r",pitch_filt_now);
+    pid_update(pitch_filt_now, roll_filt_now);
+    
   }
   return 0;
 }
@@ -502,14 +506,22 @@ void init_pwm(){
     }
 }
 
-float pid_update(float pitch, float roll){
+void pid_update(float pitch, float roll){
   float setpoint = 0;
-    float pitch_1_err =  setpoint - pitch;//motors 0 and 2
-    float pitch_2_err =  pitch - setpoint;//motors 1 and 3
+  float pitch_err =  setpoint - pitch;//motors 0 and 2
 
-    // float roll_1_err =  //motors 0 and 1
-    // float roll_2_err =  //motors 2 and 3
+  //Compute the PWM values for pitch 
+  m02 = NEUTRAL_POWER - P*pitch_err;
+  m13 = NEUTRAL_POWER + P*pitch_err;
 
+  //set 0,2
+  set_PWM(0,m02);
+  set_PWM(2,m02);
 
- return 0;
+  //set 1,3
+  set_PWM(1,m13);
+  set_PWM(3,m13);
+  
+  //Print
+  printf("%f,%f,%f,%f,%f,%f\n\r",pitch_filt_now,pitch_angle,m02,m02,m13,m13);
 }
