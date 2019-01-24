@@ -24,7 +24,14 @@
 #define PWR_MGMT_1       0x6B // Device defaults to the SLEEP mode
 #define PWR_MGMT_2       0x6C
 #define A_CONST          0.02 //Filter constant 
-
+#define PWM_MAX 1300
+#define frequency 25000000.0
+#define LED0 0x6			
+#define LED0_ON_L 0x6		
+#define LED0_ON_H 0x7		
+#define LED0_OFF_L 0x8		
+#define LED0_OFF_H 0x9		
+#define LED_MULTIPLYER 4
 
 enum Ascale {
   AFS_2G = 0,
@@ -54,6 +61,9 @@ void update_filter();
 void setup_keyboard();
 void update_Time();
 void safety_check(Keyboard keyboard);
+void init_motor(uint8_t channel);
+void init_pwm();
+void set_PWM(uint8_t channel, float time_on_us);
 
 //global variables
 int imu;
@@ -75,6 +85,7 @@ float timer;
 long timer_now;
 long timer_old;
 
+
 //New variables for comp. filter
 float pitch_filt_now = 0.0;
 float roll_filt_now = 0.0;
@@ -92,6 +103,9 @@ int hb_old = 0;
 Keyboard* shared_memory; 
 int run_program=1;
 
+// motor pwm 
+int pwm;
+
 //when cntrl+c pressed, kill motors
 void trap(int signal){
   if(signal == 1){
@@ -107,12 +121,22 @@ void trap(int signal){
     printf("Roll or Pitch Timeout \n\r");
   }
    printf("ending program\n\r");
+   set_PWM(0, 1000);
+   set_PWM(1, 1000);
+   set_PWM(2, 1000);
+   set_PWM(3, 1000);
    run_program=0;
 }
  
 int main (int argc, char *argv[]){
   //Init Functions 
   setup_imu();
+  init_pwm();
+  init_motor(0);
+  init_motor(1);
+  init_motor(2);
+  init_motor(3);
+  delay(1000);
   calibrate_imu();
   setup_keyboard();
   signal(SIGINT, &trap);
@@ -121,7 +145,7 @@ int main (int argc, char *argv[]){
     //to refresh values from shared memory first 
     //Keyboard keyboard=*shared_memory;
     //Run the safety check function 
-    safety_check(*shared_memory);
+    //safety_check(*shared_memory);
     read_imu();      
     update_filter();
 
@@ -130,6 +154,9 @@ int main (int argc, char *argv[]){
     roll_angle = (atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
     // x-z is pitch  
     pitch_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
+
+    // check motor pins
+    set_PWM(1, 1200);
   }
   return 0;
 }
@@ -360,23 +387,24 @@ void update_Time(){
 }
 
 void safety_check(Keyboard keyboard){
-  //if space, call trap
-  if(keyboard.key_press == ' '){
-    trap(1);
-  }
-  
-  //if no heart beat, start timer 
-  hb_new = keyboard.heartbeat;
-  //check heartbeat 
-  if(hb_new == hb_old){
-      update_Time();
-      //check if 0.25s have passed
-      if(timer >= 0.25){
-        trap(2);
-      }    
-  }
+    //if space, call trap
+    //   if(keyboard.key_press == ' '){
+    //     trap(1);
+    //   }
+    
+    //if no heart beat, start timer 
+    //   hb_new = keyboard.heartbeat;
+    //   //check heartbeat 
+    //   if(hb_new == hb_old){
+    //       update_Time();
+    //       //check if 0.25s have passed
+    //       if(timer >= 0.25){
+    //         trap(2);
+    //       }    
+    //   }
+
   //Check gyrorate error 
-  else if(abs(imu_data[0]) > 300.0 || abs(imu_data[1]) > 300.0 || abs(imu_data[2]) > 300.0){
+  if(abs(imu_data[0]) > 300.0 || abs(imu_data[1]) > 300.0 || abs(imu_data[2]) > 300.0){
       update_Time();
       //check if 0.10s have passed
       if(timer >= 0.10){
@@ -398,4 +426,80 @@ void safety_check(Keyboard keyboard){
       timespec_get(&te,TIME_UTC);
       timer_old = te.tv_nsec; 
   }
+}
+
+void init_motor(uint8_t channel){
+	int on_value=0;
+
+	int time_on_us=900;
+	uint16_t off_value=round((time_on_us*4096.f)/(1000000.f/400.0));
+
+	wiringPiI2CWriteReg8(pwm, LED0_ON_L + LED_MULTIPLYER * channel, on_value & 0xFF);
+	wiringPiI2CWriteReg8(pwm, LED0_ON_H + LED_MULTIPLYER * channel, on_value >> 8);
+	wiringPiI2CWriteReg8(pwm, LED0_OFF_L + LED_MULTIPLYER * channel, off_value & 0xFF);
+	wiringPiI2CWriteReg8(pwm, LED0_OFF_H + LED_MULTIPLYER * channel, off_value >> 8);
+	delay(100);
+
+	 time_on_us=1200;
+	 off_value=round((time_on_us*4096.f)/(1000000.f/400.0));
+
+	wiringPiI2CWriteReg8(pwm, LED0_ON_L + LED_MULTIPLYER * channel, on_value & 0xFF);
+	wiringPiI2CWriteReg8(pwm, LED0_ON_H + LED_MULTIPLYER * channel, on_value >> 8);
+	wiringPiI2CWriteReg8(pwm, LED0_OFF_L + LED_MULTIPLYER * channel, off_value & 0xFF);
+	wiringPiI2CWriteReg8(pwm, LED0_OFF_H + LED_MULTIPLYER * channel, off_value >> 8);
+	delay(100);
+
+	 time_on_us=1000;
+	 off_value=round((time_on_us*4096.f)/(1000000.f/400.0));
+
+	wiringPiI2CWriteReg8(pwm, LED0_ON_L + LED_MULTIPLYER * channel, on_value & 0xFF);
+	wiringPiI2CWriteReg8(pwm, LED0_ON_H + LED_MULTIPLYER * channel, on_value >> 8);
+	wiringPiI2CWriteReg8(pwm, LED0_OFF_L + LED_MULTIPLYER * channel, off_value & 0xFF);
+	wiringPiI2CWriteReg8(pwm, LED0_OFF_H + LED_MULTIPLYER * channel, off_value >> 8);
+	delay(100);
+
+}
+
+void set_PWM(uint8_t channel, float time_on_us){
+  if(run_program==1)
+  {
+    if(time_on_us>PWM_MAX)
+    {
+      time_on_us=PWM_MAX;
+    }
+    else if(time_on_us<1000) // set to 1075 instead of 1000
+    {
+      time_on_us=1000; // set to 1075 instead of 1000
+    }
+  	uint16_t off_value=round((time_on_us*4096.f)/(1000000.f/400.0));
+  	wiringPiI2CWriteReg16(pwm, LED0_OFF_L + LED_MULTIPLYER * channel,off_value);
+  }
+}
+
+void init_pwm(){
+    pwm=wiringPiI2CSetup (0x40);
+    if(pwm==-1)
+    {
+      printf("-----cant connect to I2C device %d --------\n",pwm);
+     
+    }
+    else
+    {
+  
+      float freq =400.0*.95;
+      float prescaleval = 25000000;
+      prescaleval /= 4096;
+      prescaleval /= freq;
+      prescaleval -= 1;
+      uint8_t prescale = floor(prescaleval+0.5);
+      int settings = wiringPiI2CReadReg8(pwm, 0x00) & 0x7F;
+      int sleep	= settings | 0x10;
+      int wake 	= settings & 0xef;
+      int restart = wake | 0x80;
+      wiringPiI2CWriteReg8(pwm, 0x00, sleep);
+      wiringPiI2CWriteReg8(pwm, 0xfe, prescale);
+      wiringPiI2CWriteReg8(pwm, 0x00, wake);
+      delay(10);
+      wiringPiI2CWriteReg8(pwm, 0x00, restart|0x20);
+    }
 }
