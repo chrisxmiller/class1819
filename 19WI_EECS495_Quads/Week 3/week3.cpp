@@ -32,6 +32,8 @@
 #define LED0_OFF_L 0x8		
 #define LED0_OFF_H 0x9		
 #define LED_MULTIPLYER 4
+#define NEUTRAL_POWER 1100
+#define P 10
 
 enum Ascale {
   AFS_2G = 0,
@@ -64,6 +66,7 @@ void safety_check(Keyboard keyboard);
 void init_motor(uint8_t channel);
 void init_pwm();
 void set_PWM(uint8_t channel, float time_on_us);
+int pid_update(float setpoint, float pitch, float roll);
 
 //global variables
 int imu;
@@ -85,7 +88,6 @@ float timer;
 long timer_now;
 long timer_old;
 
-
 //New variables for comp. filter
 float pitch_filt_now = 0.0;
 float roll_filt_now = 0.0;
@@ -99,14 +101,13 @@ float pitch_int = 0.0;
 //heart beat stuff
 int hb_new = 0;
 int hb_old = 0;
-
 Keyboard* shared_memory; 
 int run_program=1;
 
 // motor pwm 
 int pwm;
 
-//when cntrl+c pressed, kill motors
+//when ctrl+c pressed, kill motors
 void trap(int signal){
   if(signal == 1){
     printf("Space Pressed! \n\r");
@@ -151,12 +152,12 @@ int main (int argc, char *argv[]){
 
     //Get roll and pitch with atan2 
     // y-z is roll
-    roll_angle = (atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
+    roll_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
     // x-z is pitch  
-    pitch_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
+    pitch_angle = (atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
 
-    // check motor pins
-    set_PWM(1, 1200);
+    //printf("%f\n\r",pitch_filt_now);
+    printf("%f\n\r",pitch_filt_now);
   }
   return 0;
 }
@@ -179,18 +180,18 @@ void calibrate_imu(){
     temp_data[2] += imu_data[2]; //z
 
     //roll_calibration y-z is roll
-    temp_data[3] += atan2(imu_data[4],-imu_data[5]);
+    temp_data[3] += atan2(imu_data[3],-imu_data[5]);
 
     //pitch_calibration x-z is pitch  
-    temp_data[4] += atan2(imu_data[3],-imu_data[5]);
+    temp_data[4] += atan2(imu_data[4],-imu_data[5]);
   }  
 
   //Update the global constants, profit
   x_gyro_calibration = temp_data[0] / float(n);
   y_gyro_calibration = temp_data[1] / float(n);
   z_gyro_calibration = temp_data[2] / float(n);
-  roll_calibration =  (temp_data[3] / float(n)) * (360.0/(2*M_PI));
-  pitch_calibration = (temp_data[4] / float(n)) * (360.0/(2*M_PI));
+  roll_calibration =  (temp_data[4] / float(n)) * (360.0/(2*M_PI));
+  pitch_calibration = (temp_data[3] / float(n)) * (360.0/(2*M_PI));
  // accel_z_calibration = temp_data[5] / float(n);
 }
 
@@ -295,13 +296,13 @@ void update_filter(){
   time_prev=time_curr;
   
   //comp. filter for roll
-  roll_int = roll_int + imu_data[0]*imu_diff;
-  roll_filt_now = (roll_angle*A_CONST) + (1.0-A_CONST)*(-imu_data[0]*imu_diff+roll_filt_old);
+  roll_int = roll_int + imu_data[1]*imu_diff;
+  roll_filt_now = (roll_angle*A_CONST) + (1.0-A_CONST)*(-imu_data[1]*imu_diff+roll_filt_old);
   roll_filt_old = roll_filt_now;
 
   //comp. filter for pitch
-  pitch_int = pitch_int + imu_data[1]*imu_diff;
-  pitch_filt_now = (pitch_angle*A_CONST) + (1.0-A_CONST)*(imu_data[1]*imu_diff+pitch_filt_old);
+  pitch_int = pitch_int + imu_data[0]*imu_diff;
+  pitch_filt_now = -(pitch_angle*A_CONST) + (1.0-A_CONST)*(imu_data[0]*imu_diff+pitch_filt_old);
   pitch_filt_old = pitch_filt_now;
 
 }
@@ -461,15 +462,12 @@ void init_motor(uint8_t channel){
 }
 
 void set_PWM(uint8_t channel, float time_on_us){
-  if(run_program==1)
-  {
-    if(time_on_us>PWM_MAX)
-    {
+  if(run_program==1){
+    if(time_on_us>PWM_MAX){
       time_on_us=PWM_MAX;
     }
-    else if(time_on_us<1000) // set to 1075 instead of 1000
-    {
-      time_on_us=1000; // set to 1075 instead of 1000
+    else if(time_on_us<1000){
+      time_on_us=1000;
     }
   	uint16_t off_value=round((time_on_us*4096.f)/(1000000.f/400.0));
   	wiringPiI2CWriteReg16(pwm, LED0_OFF_L + LED_MULTIPLYER * channel,off_value);
@@ -502,4 +500,16 @@ void init_pwm(){
       delay(10);
       wiringPiI2CWriteReg8(pwm, 0x00, restart|0x20);
     }
+}
+
+float pid_update(float pitch, float roll){
+  float setpoint = 0;
+    float pitch_1_err =  setpoint - pitch;//motors 0 and 2
+    float pitch_2_err =  pitch - setpoint;//motors 1 and 3
+
+    // float roll_1_err =  //motors 0 and 1
+    // float roll_2_err =  //motors 2 and 3
+
+
+ return 0;
 }
