@@ -515,12 +515,12 @@ void pid_update(float pitch, float roll){
   m13 = NEUTRAL_POWER + P*pitch_err;
 
   //set 0,2
-  set_PWM(0,m02);
-  set_PWM(2,m02);
+  //set_PWM(0,m02); //3
+    set_PWM(2,m02);
 
-  //set 1,3
-  set_PWM(1,m13);
-  set_PWM(3,m13);
+  // //set 1,3
+  // set_PWM(1,m13);
+  // set_PWM(3,m13);
   
   //Print
   printf("%f,%f,%f,%f,%f,%f\n\r",pitch_filt_now,pitch_angle,m02,m02,m13,m13);

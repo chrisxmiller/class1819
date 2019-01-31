@@ -24,7 +24,7 @@
 #define PWR_MGMT_1       0x6B // Device defaults to the SLEEP mode
 #define PWR_MGMT_2       0x6C
 #define A_CONST          0.02 //Filter constant 
-#define PWM_MAX 1300
+#define PWM_MAX 1350
 #define frequency 25000000.0
 #define LED0 0x6			
 #define LED0_ON_L 0x6		
@@ -33,7 +33,8 @@
 #define LED0_OFF_H 0x9		
 #define LED_MULTIPLYER 4
 #define NEUTRAL_POWER 1100
-#define P 5
+#define P 0 //10
+#define D 80
 
 enum Ascale {
   AFS_2G = 0,
@@ -110,6 +111,7 @@ int pwm;
 //Pitch PID controller 
 float m02 = 0;
 float m13 = 0;
+float old_pitch = 0.0;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -158,7 +160,7 @@ int main (int argc, char *argv[]){
     // y-z is roll
     roll_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
     // x-z is pitch  
-    pitch_angle = (atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
+    pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
 
     pid_update(pitch_filt_now, roll_filt_now);
     
@@ -306,7 +308,7 @@ void update_filter(){
 
   //comp. filter for pitch
   pitch_int = pitch_int + imu_data[0]*imu_diff;
-  pitch_filt_now = -(pitch_angle*A_CONST) + (1.0-A_CONST)*(imu_data[0]*imu_diff+pitch_filt_old);
+  pitch_filt_now = (pitch_angle*A_CONST) + (1.0-A_CONST)*(imu_data[0]*imu_diff+pitch_filt_old);
   pitch_filt_old = pitch_filt_now;
 
 }
@@ -509,10 +511,14 @@ void init_pwm(){
 void pid_update(float pitch, float roll){
   float setpoint = 0;
   float pitch_err =  setpoint - pitch;//motors 0 and 2
+  
+  //Velocity 
+  float d_err = pitch - old_pitch;
+  old_pitch = pitch;
 
   //Compute the PWM values for pitch 
-  m02 = NEUTRAL_POWER - P*pitch_err;
-  m13 = NEUTRAL_POWER + P*pitch_err;
+  m02 = NEUTRAL_POWER - P*pitch_err + D*d_err;
+  m13 = NEUTRAL_POWER + P*pitch_err - D*d_err;
 
   //set 0,2
   set_PWM(0,m02);
