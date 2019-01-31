@@ -158,7 +158,7 @@ int main (int argc, char *argv[]){
     // y-z is roll
     roll_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
     // x-z is pitch  
-    pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
+    pitch_angle = (atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
 
     pid_update(pitch_filt_now, roll_filt_now);
     
@@ -306,7 +306,7 @@ void update_filter(){
 
   //comp. filter for pitch
   pitch_int = pitch_int + imu_data[0]*imu_diff;
-  pitch_filt_now = (pitch_angle*A_CONST) + (1.0-A_CONST)*(imu_data[0]*imu_diff+pitch_filt_old);
+  pitch_filt_now = -(pitch_angle*A_CONST) + (1.0-A_CONST)*(imu_data[0]*imu_diff+pitch_filt_old);
   pitch_filt_old = pitch_filt_now;
 
 }
