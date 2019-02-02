@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <wiringPi.h>
 #include <wiringPiI2C.h>
 #include <time.h>
@@ -9,8 +8,8 @@
 #include <sys/shm.h>
 #include <sys/stat.h>
 #include <curses.h>
-// #include <cstring>
-// using namespace std;
+#include <stdio.h>
+
 //gcc -o week1 week_1.cpp -lwiringPi -lncurses -lm
 // Copy from local while on local to remote scp /tmp/file user@example.com:/home/name/dir
 
@@ -23,8 +22,6 @@
 #define USER_CTRL        0x6A // Bit 7 enable DMP, bit 3 reset DMP
 #define PWR_MGMT_1       0x6B // Device defaults to the SLEEP mode
 #define PWR_MGMT_2       0x6C
-#define A_CONST          0.02 //Filter constant 
-#define PWM_MAX 1350
 #define frequency 25000000.0
 #define LED0 0x6			
 #define LED0_ON_L 0x6		
@@ -32,9 +29,6 @@
 #define LED0_OFF_L 0x8		
 #define LED0_OFF_H 0x9		
 #define LED_MULTIPLYER 4
-#define NEUTRAL_POWER 1100
-#define P 0 //10
-#define D 80
 
 enum Ascale {
   AFS_2G = 0,
@@ -68,6 +62,7 @@ void init_motor(uint8_t channel);
 void init_pwm();
 void set_PWM(uint8_t channel, float time_on_us);
 void pid_update(float pitch, float roll);
+void read_in_params();
 
 //global variables
 int imu;
@@ -113,6 +108,20 @@ float m02 = 0;
 float m13 = 0;
 float old_pitch = 0.0;
 
+//Tunable Parameters
+float P = 0.0;
+float I = 0.0;
+float D = 20.0;
+float NEUTRAL_POWER = 1100;
+float PWM_MAX = 1350;
+float A_CONST = 0.02;
+bool printing = true;
+
+//CSV file write
+// ofstream outputFile;
+// ofstream fs;
+// std::string filename = "dataOutput.csv";
+
 //when ctrl+c pressed, kill motors
 void trap(int signal){
   if(signal == 1){
@@ -147,6 +156,8 @@ int main (int argc, char *argv[]){
   calibrate_imu();
   setup_keyboard();
   signal(SIGINT, &trap);
+  //For reading in the parameters at startup
+  read_in_params();
 
   while(run_program == 1){
     //to refresh values from shared memory first 
@@ -310,7 +321,6 @@ void update_filter(){
   pitch_int = pitch_int + imu_data[0]*imu_diff;
   pitch_filt_now = (pitch_angle*A_CONST) + (1.0-A_CONST)*(imu_data[0]*imu_diff+pitch_filt_old);
   pitch_filt_old = pitch_filt_now;
-
 }
 
 int setup_imu(){
@@ -529,5 +539,68 @@ void pid_update(float pitch, float roll){
   set_PWM(3,m13);
   
   //Print
-  printf("%f,%f,%f,%f,%f,%f\n\r",pitch_filt_now,pitch_angle,m02,m02,m13,m13);
+  if(printing){
+    printf("%f,%f,%f,%f,%f,%f\n\r",pitch_filt_now,pitch_angle,m02,m02,m13,m13);
+  }
+
+
+  // fs.open(outputFile, filename);
+  // outputFile
 }
+
+void read_in_params(){
+  float input;
+  bool reading = true;
+  while(reading){
+    puts("0 for P, 1 for I, 2 for D, 3 for MaxPWM, 4 for A, 5 for Neutral, 6 for printing, 7 to exit/Default");
+    scanf("%f",&input);
+    if(input == 0.0){
+      scanf("%f", &P);
+      printf("P Set to: %f",P);
+    }
+    else if(input == 1.0){
+      scanf("%f", &I);
+      printf("P Set to: %f",I);
+    }
+    else if(input == 2.0){
+      scanf("%f", &D);
+      printf("P Set to: %f",D);
+    }
+    else if(input == 3.0){
+      scanf("%f", &PWM_MAX);
+      printf("P Set to: %f",PWM_MAX);
+    }
+    else if(input == 4.0){
+      scanf("%f", &A_CONST);
+      printf("P Set to: %f",A_CONST);
+     }
+    else if(input == 5.0){
+      scanf("%f", &NEUTRAL_POWER);
+      printf("P Set to: %f",NEUTRAL_POWER);
+    }
+    else if(input == 6.0){
+      puts("1 or 0 only");
+      scanf("%d", &printing);
+      printf("P Set to: %f",printing);
+    }
+    else if(input == 7.0){
+      reading = false;
+      puts("Goodbye");
+    }
+    else{
+      puts("Not Correct Inputs, Fucker.");
+    }
+  }
+  return;
+}
+
+/// Reference ///
+// float P = 0.0;
+// float I = 0.0;
+// float D = 20.0;
+// float NEUTRAL_POWER = 1100;
+// float PWM_MAX = 1350;
+// float A_CONST = 0.02;
+// bool printing = true;
+  
+
