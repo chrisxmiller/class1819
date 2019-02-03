@@ -52,6 +52,7 @@ struct Keyboard {
 
 //Function declarations
 int setup_imu();
+void read_in_params();
 void calibrate_imu();      
 void read_imu();    
 void update_filter();
@@ -62,7 +63,7 @@ void init_motor(uint8_t channel);
 void init_pwm();
 void set_PWM(uint8_t channel, float time_on_us);
 void pid_update(float pitch, float roll);
-void read_in_params();
+
 
 //global variables
 int imu;
@@ -107,15 +108,16 @@ int pwm;
 float m02 = 0;
 float m13 = 0;
 float old_pitch = 0.0;
+float i_error = 0.0;
 
 //Tunable Parameters
 float P = 0.0;
 float I = 0.0;
 float D = 20.0;
-float NEUTRAL_POWER = 1100;
-float PWM_MAX = 1350;
-float A_CONST = 0.02;
-bool printing = true;
+float NEUTRAL_POWER = 1250;
+float PWM_MAX = 1400;
+float A_CONST = 0.01;
+bool printing = false;
 
 //CSV file write
 // ofstream outputFile;
@@ -153,12 +155,12 @@ int main (int argc, char *argv[]){
   init_motor(2);
   init_motor(3);
   delay(1000);
+   //For reading in the parameters at startup
+  read_in_params();
   calibrate_imu();
   setup_keyboard();
   signal(SIGINT, &trap);
-  //For reading in the parameters at startup
-  read_in_params();
-
+ 
   while(run_program == 1){
     //to refresh values from shared memory first 
     //Keyboard keyboard=*shared_memory;
@@ -520,15 +522,27 @@ void init_pwm(){
 
 void pid_update(float pitch, float roll){
   float setpoint = 0;
-  float pitch_err =  setpoint - pitch;//motors 0 and 2
+  //Error Computation 
+  float pitch_err =  setpoint - pitch;
   
-  //Velocity 
+  //Velocity (Derivtive Computation)
   float d_err = pitch - old_pitch;
   old_pitch = pitch;
 
+  //I term integration 
+  i_error += pitch_err;
+
+  //Integrator wind up prevention
+  if(i_error > 50.0){
+    i_error = 50.0;
+  }
+  else if(i_error < -50.0){
+    i_error = -50.0;
+  }
+
   //Compute the PWM values for pitch 
-  m02 = NEUTRAL_POWER - P*pitch_err + D*d_err;
-  m13 = NEUTRAL_POWER + P*pitch_err - D*d_err;
+  m02 = NEUTRAL_POWER - P*pitch_err + D*d_err + I*i_error;
+  m13 = NEUTRAL_POWER + P*pitch_err - D*d_err - I*i_error;
 
   //set 0,2
   set_PWM(0,m02);
@@ -542,53 +556,49 @@ void pid_update(float pitch, float roll){
   if(printing){
     printf("%f,%f,%f,%f,%f,%f\n\r",pitch_filt_now,pitch_angle,m02,m02,m13,m13);
   }
-
-
-  // fs.open(outputFile, filename);
-  // outputFile
 }
 
 void read_in_params(){
   float input;
   bool reading = true;
   while(reading){
-    puts("0 for P, 1 for I, 2 for D, 3 for MaxPWM, 4 for A, 5 for Neutral, 6 for printing, 7 to exit/Default");
+    puts("Param Selection: 0 for P, 1 for I, 2 for D, 3 for MaxPWM, 4 for A, 5 for Neutral, 6 for printing, 7 to exit/Default\n\r");
     scanf("%f",&input);
     if(input == 0.0){
       scanf("%f", &P);
-      printf("P Set to: %f",P);
+      printf("P Set to: %f\n\r",P);
     }
     else if(input == 1.0){
       scanf("%f", &I);
-      printf("P Set to: %f",I);
+      printf("I Set to: %f\n\r",I);
     }
     else if(input == 2.0){
       scanf("%f", &D);
-      printf("P Set to: %f",D);
+      printf("D Set to: %f\n\r",D);
     }
     else if(input == 3.0){
       scanf("%f", &PWM_MAX);
-      printf("P Set to: %f",PWM_MAX);
+      printf("PWM_MAX Set to: %f\n\r",PWM_MAX);
     }
     else if(input == 4.0){
       scanf("%f", &A_CONST);
-      printf("P Set to: %f",A_CONST);
+      printf("A Set to: %f\n\r",A_CONST);
      }
     else if(input == 5.0){
       scanf("%f", &NEUTRAL_POWER);
-      printf("P Set to: %f",NEUTRAL_POWER);
+      printf("Neutral Speed Set to: %f\n\r",NEUTRAL_POWER);
     }
     else if(input == 6.0){
-      puts("1 or 0 only");
+      puts("BOOL: 1 or 0 only\n\r");
       scanf("%d", &printing);
-      printf("P Set to: %f",printing);
+      printf("Printing Set to: %f\n\r",printing);
     }
     else if(input == 7.0){
       reading = false;
-      puts("Goodbye");
+      puts("Goodbye\n\r");
     }
     else{
-      puts("Not Correct Inputs, Fucker.");
+      puts("Not Correct Inputs.\n\r");
     }
   }
   return;

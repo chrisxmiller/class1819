@@ -1,0 +1,14 @@
+Just D
+A - 0.02
+D = ~50 ish
+Neutral - 1100
+Max --?
+
+
+PD Controller Stuff 
+P = 7
+I = 0
+D = 138
+A = 0.01; try tuning me
+Neutral = 1250
+Max = 1400
