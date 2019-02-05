@@ -111,12 +111,12 @@ float old_pitch = 0.0;
 float i_error = 0.0;
 
 //Tunable Parameters
-float P = 0.0;
-float I = 0.0;
-float D = 20.0;
+float P = 7.5;
+float I = 0.02;
+float D = 140.0;
 float NEUTRAL_POWER = 1250;
 float PWM_MAX = 1400;
-float A_CONST = 0.01;
+float A_CONST = 0.005;
 bool printing = false;
 
 //CSV file write
@@ -562,7 +562,7 @@ void read_in_params(){
   float input;
   bool reading = true;
   while(reading){
-    puts("Param Selection: 0 for P, 1 for I, 2 for D, 3 for MaxPWM, 4 for A, 5 for Neutral, 6 for printing, 7 to exit/Default\n\r");
+    puts("Param Selection:\n\r 0 for P\n\r 1 for I\n\r 2 for D\n\r 3 for MaxPWM\n\r 4 for A\n\r 5 for Neutral\n\r 6 for printing\n\r 7 to exit/Default\n\r");
     scanf("%f",&input);
     if(input == 0.0){
       scanf("%f", &P);
