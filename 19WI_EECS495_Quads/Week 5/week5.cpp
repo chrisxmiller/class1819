@@ -45,9 +45,12 @@ enum Gscale {
 };
 
 struct Keyboard {
-  char key_press;
-  int heartbeat;
-  int version;
+  int keypress;
+  int pitch;
+  int roll;
+  int yaw;
+  int thrust;
+  int sequence_num;
 };
 
 //Function declarations
@@ -62,7 +65,7 @@ void safety_check(Keyboard keyboard);
 void init_motor(uint8_t channel);
 void init_pwm();
 void set_PWM(uint8_t channel, float time_on_us);
-void pid_update(float pitch, float roll);
+void pid_update(float pitch, float roll, Keyboard keyboard);
 
 
 //global variables
@@ -114,13 +117,12 @@ float i_error = 0.0;
 float P = 10.0;
 float I = 0.003;
 float D = 250.0;
-float NEUTRAL_POWER = 1350;
 float PWM_MAX = 1600;
 float A_CONST = 0.005;
 float MAX_I = 50.0;
 bool printing = false;
 
-float counter = 0;
+int counter = 0;
 
 //CSV file write
 // ofstream outputFile;
@@ -178,7 +180,7 @@ int main (int argc, char *argv[]){
     // x-z is pitch  
     pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
 
-    pid_update(pitch_filt_now, roll_filt_now);
+    pid_update(pitch_filt_now, roll_filt_now,*shared_memory);
     
   }
   return 0;
@@ -409,21 +411,29 @@ void update_Time(){
 }
 
 void safety_check(Keyboard keyboard){
-    //if space, call trap
-    //   if(keyboard.key_press == ' '){
+    // //if space, call trap
+    //   if(keyboard.keypress == ' '){
     //     trap(1);
     //   }
     
+
+//   int keypress;
+//   int pitch;
+//   int roll;
+//   int yaw;
+//   int thrust;
+//   int sequence_num;
+
     //if no heart beat, start timer 
-    //   hb_new = keyboard.heartbeat;
-    //   //check heartbeat 
-    //   if(hb_new == hb_old){
-    //       update_Time();
-    //       //check if 0.25s have passed
-    //       if(timer >= 0.25){
-    //         trap(2);
-    //       }    
-    //   }
+  hb_new = keyboard.sequence_num;
+  //   //check heartbeat 
+  if(hb_new == hb_old){
+    update_Time();
+    //check if 0.25s have passed
+    if(timer >= 0.25){
+      trap(2);
+    }    
+  }
 
   //Check gyrorate error 
   if(abs(imu_data[0]) > 300.0 || abs(imu_data[1]) > 300.0 || abs(imu_data[2]) > 300.0){
@@ -523,7 +533,7 @@ void init_pwm(){
     }
 }
 
-void pid_update(float pitch, float roll){
+void pid_update(float pitch, float roll, Keyboard keyboard){
   float setpoint = 0;
   //Error Computation 
   float pitch_err = P*(setpoint - pitch);
@@ -544,9 +554,8 @@ void pid_update(float pitch, float roll){
   }
 
   //Compute the PWM values for pitch 
-  m02 = NEUTRAL_POWER - pitch_err + D*d_err - i_error;
-  m13 = NEUTRAL_POWER + pitch_err - D*d_err + i_error;
- // printf("%f\n\r",i_error);
+  m02 = 1350.0 - pitch_err + D*d_err - i_error;
+  m13 = 1350.0 + pitch_err - D*d_err + i_error;
 
   //set 0,2
   set_PWM(0,m02);
@@ -557,7 +566,7 @@ void pid_update(float pitch, float roll){
   set_PWM(3,m13);
   
   //Print
-  if(printing &&  countrer % 100 == 0){
+  if(printing &&  counter % 100 == 0){
     printf("%f,%f,%f,%f,%f,%f\n\r",pitch_filt_now,pitch_angle,m02,m02,m13,m13);
   }
   counter++;
@@ -589,10 +598,10 @@ void read_in_params(){
       scanf("%f", &A_CONST);
       printf("A Set to: %f\n\r",A_CONST);
      }
-    else if(input == 5.0){
-      scanf("%f", &NEUTRAL_POWER);
-      printf("Neutral Speed Set to: %f\n\r",NEUTRAL_POWER);
-    }
+    // else if(input == 5.0){
+    //   scanf("%f", &NEUTRAL_POWER);
+    //   printf("Neutral Speed Set to: %f\n\r",NEUTRAL_POWER);
+    //}
     else if(input == 6.0){
       scanf("%f", &MAX_I);
       printf("Max I Set to: %f\n\r",MAX_I);
