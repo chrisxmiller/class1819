@@ -66,9 +66,9 @@ void init_motor(uint8_t channel);
 void init_pwm();
 void set_PWM(uint8_t channel, float time_on_us);
 void pid_update(float pitch, float roll, Keyboard keyboard);
+void keypress_check(Keyboard keyboard);
 
-
-//global variables
+//variables
 int imu;
 float x_gyro_calibration=0;
 float y_gyro_calibration=0;
@@ -98,11 +98,12 @@ float roll_filt_old = 0.0;
 float roll_int = 0.0;
 float pitch_int = 0.0;
 
-//heart beat stuff
+//heartbeat and pausing stuff
 int hb_new = 0;
 int hb_old = 0;
 Keyboard* shared_memory; 
 int run_program=1;
+bool pauseMotors = false;
 
 // motor pwm 
 int pwm;
@@ -112,30 +113,35 @@ float m02 = 0;
 float m13 = 0;
 float old_pitch = 0.0;
 float i_error = 0.0;
+int counter = 0; // for printing - prevent the printf statements from dominating the output
 
-//Tunable Parameters
-float P = 10.0;
+
+//Tunable Parameters - Pitch
+float P = 12.0;
 float I = 0.003;
-float D = 250.0;
+float D = 180.0;
 float PWM_MAX = 1600;
 float A_CONST = 0.005;
 float MAX_I = 50.0;
 bool printing = false;
 
-int counter = 0;
+// //Tunable Parameters - Roll
+// float P = 12.0;
+// float I = 0.003;
+// float D = 180.0;
+// float PWM_MAX = 1600;
+// float A_CONST = 0.005;
+// float MAX_I = 50.0;
+// bool printing = false;
 
-//CSV file write
-// ofstream outputFile;
-// ofstream fs;
-// std::string filename = "dataOutput.csv";
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
   if(signal == 1){
-    printf("Space Pressed! \n\r");
+    printf("Kill Button Pressed! \n\r");
   } 
   if(signal == 2){
-    printf("Keyboard Timeout \n\r");
+    printf("Controller Timeout \n\r");
   }
   if(signal == 3){
     printf("Gyrorate Timeout \n\r");
@@ -171,17 +177,26 @@ int main (int argc, char *argv[]){
     //Keyboard keyboard=*shared_memory;
     //Run the safety check function 
     safety_check(*shared_memory);
+    keypress_check(*shared_memory);
     read_imu();      
     update_filter();
+    //If motors paused
+    if(pauseMotors){
+      printf("Motors Paused\n\r");
+      set_PWM(0, 1000);
+      set_PWM(1, 1000);
+      set_PWM(2, 1000);
+      set_PWM(3, 1000);
+    }
+    else{
+      //Get roll and pitch with atan2 
+      // y-z is roll
+      roll_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
+      // x-z is pitch  
+      pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
 
-    //Get roll and pitch with atan2 
-    // y-z is roll
-    roll_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
-    // x-z is pitch  
-    pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
-
-    pid_update(pitch_filt_now, roll_filt_now,*shared_memory);
-    
+      pid_update(pitch_filt_now, roll_filt_now,*shared_memory);
+    }
   }
   return 0;
 }
@@ -411,22 +426,14 @@ void update_Time(){
 }
 
 void safety_check(Keyboard keyboard){
-    // //if space, call trap
-    //   if(keyboard.keypress == ' '){
-    //     trap(1);
-    //   }
-    
+  //if space, call trap
+    if(keyboard.keypress == 32){
+      trap(1);
+    }
 
-//   int keypress;
-//   int pitch;
-//   int roll;
-//   int yaw;
-//   int thrust;
-//   int sequence_num;
-
-    //if no heart beat, start timer 
+  //if no heart beat, start timer 
   hb_new = keyboard.sequence_num;
-  //   //check heartbeat 
+  //check heartbeat 
   if(hb_new == hb_old){
     update_Time();
     //check if 0.25s have passed
@@ -620,4 +627,22 @@ void read_in_params(){
     }
   }
   return;
+}
+
+void keypress_check(Keyboard keypad)){
+  //Check Keypresses for calibrate
+  if(keypad.keypress == 35){
+    calibrate_imu();
+    printf("Calibrated IMU\n\r");
+  }
+  //Pause motors
+  if(keypad.keypress == && !pauseMotors){
+    pauseMotors = true;
+    printf("MOTORS PAUSED\n\r");
+  }
+  //Unpause motors 
+  if(keypad.keypress == && pauseMotors){
+    pauseMotors = false;
+    printf("MOTORS UNPAUSED\n\r");
+  }
 }
