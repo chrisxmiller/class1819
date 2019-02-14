@@ -116,30 +116,35 @@ float m1 = 0;
 float m2 = 0;
 float m3 = 0;
 float old_pitch = 0.0;
-float old_roll = 0.0;
-float i_errorp = 0.0;
-float i_errorr = 0.0;
+float i_error = 0.0;
 int counter = 0; // for printing - prevent the printf statements from dominating the output
 
 
 //Tunable Parameters - Pitch
-float Pp = 0;
-float Ip = 0.00;
-float Dp = 0.0;
-float PWM_MAX = 1600;
-float A_CONST = 0.005;
-float MAX_I = 50.0;
-bool printing = false;
+float P = 5;
+float I = 0;
+float D = 150.0;
+float PWM_MAX = 1650;
+float A_CONST = 0.0025;
+float MAX_I = 100.0;
+bool printing = true;
+
+// float P = 8.5;
+// float I = 0.008;
+// float D = 260.0;
+// float PWM_MAX = 1650;
+// float A_CONST = 0.005;
+// float MAX_I = 100.0;
+// bool printing = true;
 
 // //Tunable Parameters - Roll
-float P = 9.0;
-float I = 0.004;
-float D = 230.0;
-
-//Pitch Vars
-// float Pp = 9.0;
-// float Ip = 0.004;
-// float Dp = 230.0;
+// float P = 12.0;
+// float I = 0.003;
+// float D = 180.0;
+// float PWM_MAX = 1600;
+// float A_CONST = 0.005;
+// float MAX_I = 50.0;
+// bool printing = false;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -548,48 +553,31 @@ void init_pwm(){
 }
 
 void pid_update(float pitch, float roll, Keyboard* keypad){
-  float pitchcmd = int((float(keypad->pitch)*(-0.3571))+45.714);
-  float rollcmd = int((float(keypad->roll)*(-0.3571))+45.714);
-
+  float setpoint = int((float(keypad->pitch)*(-0.1786))+22.86);
   //Error Computation 
-  float pitch_err = Pp*(pitchcmd - pitch);
-  float roll_err = P*(rollcmd - roll);
+  float pitch_err = P*(setpoint - pitch);
   
   //Velocity (Derivtive Computation)
-  float d_errp = pitch - old_pitch;
+  float d_err = pitch - old_pitch;
   old_pitch = pitch;
 
-  float d_errr = roll - old_roll;
-  old_roll = roll;
-
   //I term integration 
-  i_errorp += Ip*pitch_err;
-  i_errorr += I*roll_err;
+  i_error += I*pitch_err;
 
   //Integrator wind up prevention
-  if(i_errorp > MAX_I){
-    i_errorp = MAX_I;
+  if(i_error > MAX_I){
+    i_error = MAX_I;
   }
-  else if(i_errorp < -MAX_I){
-    i_errorp = -MAX_I;
-  }
-
-  if(i_errorr > MAX_I){
-    i_errorr = MAX_I;
-  }
-  else if(i_errorr < -MAX_I){
-    i_errorr = -MAX_I;
+  else if(i_error < -MAX_I){
+    i_error = -MAX_I;
   }
 
-  float th = int((float(keypad->thrust)*(-0.8929))+1414.3);
+  float th = float(keypad->thrust)*-1.79 + 1629.0;
 
-  //Compute the PWM values for pitch 
-  //int((float(keypad->thrust)*(-0.8929))+1414.3)
-  m0 = th - pitch_err + Dp*d_errp - i_errorp - roll_err + D*d_errr - i_errorr;
-  m1 = th + pitch_err - Dp*d_errp + i_errorp - roll_err + D*d_errr - i_errorr;
-  m2 = th - pitch_err + Dp*d_errp - i_errorp + roll_err - D*d_errr + i_errorr;
-  m3 = th + pitch_err - Dp*d_errp + i_errorp + roll_err - D*d_errr + i_errorr;
-  
+  m0 = th - pitch_err + D*d_err - i_error;
+  m2 = th - pitch_err + D*d_err - i_error;
+  m1 = th + pitch_err - D*d_err + i_error;
+  m3 = th + pitch_err - D*d_err + i_error;
 
   // NEW set 0, 2
   set_PWM(0,m0);
@@ -600,10 +588,9 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   set_PWM(3,m3);
   
   //Print
-  if(printing &&  counter % 100 == 0){
+  if(printing &&  counter % 50 == 0){
     // printf("%f,%f,%f,%f,%f,%f\n\r",pitch_filt_now,pitch_angle,m02,m02,m13,m13);
-    // printf("%f,%f\n\r",pitch_filt_now,pitchcmd);
-    printf("%f,%f\n\r",roll_filt_now,rollcmd);
+    printf("%f,%f,%f\n\r",setpoint, pitch,i_error);
   }
   counter++;
 }
