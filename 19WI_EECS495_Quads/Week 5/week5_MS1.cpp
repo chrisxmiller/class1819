@@ -117,17 +117,18 @@ float m2 = 0;
 float m3 = 0;
 float old_pitch = 0.0;
 float i_error = 0.0;
-int counter = 0; // for printing - prevent the printf statements from dominating the output
-
 
 //Tunable Parameters - Pitch
 float P = 5;
-float I = 0;
-float D = 150.0;
+float I = 0.01;
+float D = 200.0;
 float PWM_MAX = 1650;
 float A_CONST = 0.0025;
 float MAX_I = 100.0;
 bool printing = true;
+bool pauser = false;
+
+FILE *pFile;
 
 // float P = 8.5;
 // float I = 0.008;
@@ -160,12 +161,14 @@ void trap(int signal){
   if(signal == 4){
     printf("Roll or Pitch Timeout \n\r");
   }
-   printf("ending program\n\r");
-   set_PWM(0, 1000);
-   set_PWM(1, 1000);
-   set_PWM(2, 1000);
-   set_PWM(3, 1000);
-   run_program=0;
+  
+  printf("ending program\n\r");
+  set_PWM(0, 1000);
+  set_PWM(1, 1000);
+  set_PWM(2, 1000);
+  set_PWM(3, 1000);
+  run_program=0;
+  //fclose(pFile);
 }
  
 int main (int argc, char *argv[]){
@@ -191,13 +194,17 @@ int main (int argc, char *argv[]){
     keypress_check(shared_memory);
     read_imu();      
     update_filter();
+    pFile = fopen("data.txt","a+");
     //If motors paused
     if(pauseMotors){
-      printf("Motors Paused\n\r");
-      set_PWM(0, 1000);
-      set_PWM(1, 1000);
-      set_PWM(2, 1000);
-      set_PWM(3, 1000);
+      if(pauser){
+        printf("Motors Paused\n\r");
+        set_PWM(0, 1000);
+        set_PWM(1, 1000);
+        set_PWM(2, 1000);
+        set_PWM(3, 1000);
+        pauser = false;
+      }
     }
     else{
       //Get roll and pitch with atan2 
@@ -208,6 +215,7 @@ int main (int argc, char *argv[]){
 
       pid_update(pitch_filt_now, roll_filt_now, shared_memory);
       //printf("%f\n\r",keyboard.sequence_num);
+      pauser = true;
     }
   }
   return 0;
@@ -338,8 +346,7 @@ void update_filter(){
   imu_diff = time_curr - time_prev;           
   
   //check for rollover
-  if(imu_diff<=0)
-  {
+  if(imu_diff<=0) {
     imu_diff+=1000000000;
   }
   //convert to seconds
@@ -442,7 +449,6 @@ void safety_check(Keyboard* keyboard){
     if(keyboard->keypress == 32){
       trap(1);
     }
-
   //if no heart beat, start timer 
   hb_new = keyboard->sequence_num;
   //check heartbeat 
@@ -453,9 +459,8 @@ void safety_check(Keyboard* keyboard){
       trap(2);
     }    
   }
-
   //Check gyrorate error 
-  if(abs(imu_data[0]) > 300.0 || abs(imu_data[1]) > 300.0 || abs(imu_data[2]) > 300.0){
+  else if(abs(imu_data[0]) > 300.0 || abs(imu_data[1]) > 300.0 || abs(imu_data[2]) > 300.0){
       update_Time();
       //check if 0.10s have passed
       if(timer >= 0.10){
@@ -580,19 +585,15 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   m3 = th + pitch_err - D*d_err + i_error;
 
   // NEW set 0, 2
-  set_PWM(0,m0);
-  set_PWM(2,m2);
+  // set_PWM(0,m0);
+  // set_PWM(2,m2);
 
-  // NEW set 1,3
-  set_PWM(1,m1);
-  set_PWM(3,m3);
+  // // NEW set 1,3
+  // set_PWM(1,m1);
+  // set_PWM(3,m3);
   
   //Print
-  if(printing &&  counter % 50 == 0){
-    // printf("%f,%f,%f,%f,%f,%f\n\r",pitch_filt_now,pitch_angle,m02,m02,m13,m13);
-    printf("%f,%f,%f\n\r",setpoint, pitch,i_error);
-  }
-  counter++;
+  //fprintf(pFile, "Test Text\n\r");
 }
 
 void read_in_params(){
