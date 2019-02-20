@@ -119,13 +119,13 @@ float old_pitch = 0.0;
 float i_error = 0.0;
 
 //Tunable Parameters - Pitch
-float P = 5;
+float P = 7;
 float I = 0.01;
-float D = 200.0;
+float D = 300.0;
 float PWM_MAX = 1650;
 float A_CONST = 0.0025;
-float MAX_I = 100.0;
-bool printing = true;
+float MAX_I = 50.0;
+bool printing = false;
 bool pauser = false;
 
 FILE *pFile;
@@ -160,15 +160,14 @@ void trap(int signal){
   }
   if(signal == 4){
     printf("Roll or Pitch Timeout \n\r");
-  }
-  
-  printf("ending program\n\r");
+  } 
+  printf("Ending Program\n\r");
   set_PWM(0, 1000);
   set_PWM(1, 1000);
   set_PWM(2, 1000);
   set_PWM(3, 1000);
   run_program=0;
-  //fclose(pFile);
+
 }
  
 int main (int argc, char *argv[]){
@@ -194,11 +193,10 @@ int main (int argc, char *argv[]){
     keypress_check(shared_memory);
     read_imu();      
     update_filter();
-    pFile = fopen("data.txt","a+");
+    
     //If motors paused
     if(pauseMotors){
       if(pauser){
-        printf("Motors Paused\n\r");
         set_PWM(0, 1000);
         set_PWM(1, 1000);
         set_PWM(2, 1000);
@@ -211,10 +209,9 @@ int main (int argc, char *argv[]){
       // y-z is roll
       roll_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
       // x-z is pitch  
-      pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
+      pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) + pitch_calibration;
 
       pid_update(pitch_filt_now, roll_filt_now, shared_memory);
-      //printf("%f\n\r",keyboard.sequence_num);
       pauser = true;
     }
   }
@@ -249,8 +246,8 @@ void calibrate_imu(){
   x_gyro_calibration = temp_data[0] / float(n);
   y_gyro_calibration = temp_data[1] / float(n);
   z_gyro_calibration = temp_data[2] / float(n);
-  roll_calibration =  (temp_data[4] / float(n)) * (360.0/(2*M_PI));
-  pitch_calibration = (temp_data[3] / float(n)) * (360.0/(2*M_PI));
+  roll_calibration =  (temp_data[3] / float(n)) * (360.0/(2*M_PI));
+  pitch_calibration = (temp_data[4] / float(n)) * (360.0/(2*M_PI));
  // accel_z_calibration = temp_data[5] / float(n);
 }
 
@@ -454,8 +451,8 @@ void safety_check(Keyboard* keyboard){
   //check heartbeat 
   if(hb_new == hb_old){
     update_Time();
-    //check if 0.25s have passed
-    if(timer >= 0.25){
+    //check if 0.5s have passed
+    if(timer >= 0.5){
       trap(2);
     }    
   }
@@ -584,16 +581,18 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   m1 = th + pitch_err - D*d_err + i_error;
   m3 = th + pitch_err - D*d_err + i_error;
 
-  // NEW set 0, 2
-  // set_PWM(0,m0);
-  // set_PWM(2,m2);
-
-  // // NEW set 1,3
-  // set_PWM(1,m1);
-  // set_PWM(3,m3);
+  //NEW set 0, 2
+  set_PWM(0,m0);
+  set_PWM(1,m1);
+  set_PWM(2,m2);
+  set_PWM(3,m3);
   
   //Print
-  //fprintf(pFile, "Test Text\n\r");
+  if(printing){
+    pFile = fopen("data.txt","a+");
+    fprintf(pFile, "%f,%f\n\r", setpoint, pitch_filt_now);
+    fclose(pFile);
+  }
 }
 
 void read_in_params(){
