@@ -119,27 +119,38 @@ float old_pitch = 0.0;
 float old_roll = 0.0;
 float i_errorp = 0.0;
 float i_errorr = 0.0;
-int counter = 0; // for printing - prevent the printf statements from dominating the output
-
 
 //Tunable Parameters - Pitch
 float Pp = 0;
 float Ip = 0.00;
 float Dp = 0.0;
-float PWM_MAX = 1600;
-float A_CONST = 0.005;
+
+//Tunable Parameters - Roll
+float Pr = 0.0;
+float Ir = 0.0;
+float Dr = 0.0;
+
+//Tunable Parameters
+float PWM_MAX = 1650;
+float A_CONST = 0.0025;
 float MAX_I = 50.0;
 bool printing = false;
+bool pauser = false;
+FILE *pFile;
+
+// Pitch PID
+// float P = 7;
+// float I = 0.01;
+// float D = 300.0;
 
 // //Tunable Parameters - Roll
-float P = 9.0;
-float I = 0.004;
-float D = 230.0;
-
-//Pitch Vars
-// float Pp = 9.0;
-// float Ip = 0.004;
-// float Dp = 230.0;
+// float P = 12.0;
+// float I = 0.003;
+// float D = 180.0;
+// float PWM_MAX = 1600;
+// float A_CONST = 0.005;
+// float MAX_I = 50.0;
+// bool printing = false;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -154,13 +165,14 @@ void trap(int signal){
   }
   if(signal == 4){
     printf("Roll or Pitch Timeout \n\r");
-  }
-   printf("ending program\n\r");
-   set_PWM(0, 1000);
-   set_PWM(1, 1000);
-   set_PWM(2, 1000);
-   set_PWM(3, 1000);
-   run_program=0;
+  } 
+  printf("Ending Program\n\r");
+  set_PWM(0, 1000);
+  set_PWM(1, 1000);
+  set_PWM(2, 1000);
+  set_PWM(3, 1000);
+  run_program=0;
+
 }
  
 int main (int argc, char *argv[]){
@@ -186,23 +198,25 @@ int main (int argc, char *argv[]){
     keypress_check(shared_memory);
     read_imu();      
     update_filter();
+    
     //If motors paused
     if(pauseMotors){
-      printf("Motors Paused\n\r");
-      set_PWM(0, 1000);
-      set_PWM(1, 1000);
-      set_PWM(2, 1000);
-      set_PWM(3, 1000);
+      if(pauser){
+        set_PWM(0, 1000);
+        set_PWM(1, 1000);
+        set_PWM(2, 1000);
+        set_PWM(3, 1000);
+        pauser = false;
+      }
     }
     else{
       //Get roll and pitch with atan2 
       // y-z is roll
       roll_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
       // x-z is pitch  
-      pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) - pitch_calibration;
-
+      pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) + pitch_calibration;
       pid_update(pitch_filt_now, roll_filt_now, shared_memory);
-      //printf("%f\n\r",keyboard.sequence_num);
+      pauser = true;
     }
   }
   return 0;
@@ -236,8 +250,10 @@ void calibrate_imu(){
   x_gyro_calibration = temp_data[0] / float(n);
   y_gyro_calibration = temp_data[1] / float(n);
   z_gyro_calibration = temp_data[2] / float(n);
-  roll_calibration =  (temp_data[4] / float(n)) * (360.0/(2*M_PI));
-  pitch_calibration = (temp_data[3] / float(n)) * (360.0/(2*M_PI));
+  roll_calibration =  (temp_data[3] / float(n)) * (360.0/(2*M_PI));
+  pitch_calibration = (temp_data[4] / float(n)) * (360.0/(2*M_PI));
+
+   
  // accel_z_calibration = temp_data[5] / float(n);
 }
 
@@ -333,8 +349,7 @@ void update_filter(){
   imu_diff = time_curr - time_prev;           
   
   //check for rollover
-  if(imu_diff<=0)
-  {
+  if(imu_diff<=0) {
     imu_diff+=1000000000;
   }
   //convert to seconds
@@ -437,20 +452,18 @@ void safety_check(Keyboard* keyboard){
     if(keyboard->keypress == 32){
       trap(1);
     }
-
   //if no heart beat, start timer 
   hb_new = keyboard->sequence_num;
   //check heartbeat 
   if(hb_new == hb_old){
     update_Time();
-    //check if 0.25s have passed
-    if(timer >= 0.25){
+    //check if 0.5s have passed
+    if(timer >= 0.5){
       trap(2);
     }    
   }
-
   //Check gyrorate error 
-  if(abs(imu_data[0]) > 300.0 || abs(imu_data[1]) > 300.0 || abs(imu_data[2]) > 300.0){
+  else if(abs(imu_data[0]) > 300.0 || abs(imu_data[1]) > 300.0 || abs(imu_data[2]) > 300.0){
       update_Time();
       //check if 0.10s have passed
       if(timer >= 0.10){
@@ -548,12 +561,11 @@ void init_pwm(){
 }
 
 void pid_update(float pitch, float roll, Keyboard* keypad){
-  float pitchcmd = int((float(keypad->pitch)*(-0.3571))+45.714);
-  float rollcmd = int((float(keypad->roll)*(-0.3571))+45.714);
-
+  float pitchcmd = int((float(keypad->pitch)*(-0.1786))+22.86);
+  float rollcmd = int((float(keypad->pitch)*(-0.1786))+22.86);
   //Error Computation 
   float pitch_err = Pp*(pitchcmd - pitch);
-  float roll_err = P*(rollcmd - roll);
+  float roll_err = Pr*(rollcmd - roll);
   
   //Velocity (Derivtive Computation)
   float d_errp = pitch - old_pitch;
@@ -564,7 +576,7 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
 
   //I term integration 
   i_errorp += Ip*pitch_err;
-  i_errorr += I*roll_err;
+  i_errorr += Ir*roll_err;
 
   //Integrator wind up prevention
   if(i_errorp > MAX_I){
@@ -581,50 +593,44 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
     i_errorr = -MAX_I;
   }
 
-  float th = int((float(keypad->thrust)*(-0.8929))+1414.3);
+  float th = float(keypad->thrust)*-1.79 + 1629.0;
 
-  //Compute the PWM values for pitch 
-  //int((float(keypad->thrust)*(-0.8929))+1414.3)
-  m0 = th - pitch_err + Dp*d_errp - i_errorp - roll_err + D*d_errr - i_errorr;
-  m1 = th + pitch_err - Dp*d_errp + i_errorp - roll_err + D*d_errr - i_errorr;
-  m2 = th - pitch_err + Dp*d_errp - i_errorp + roll_err - D*d_errr + i_errorr;
-  m3 = th + pitch_err - Dp*d_errp + i_errorp + roll_err - D*d_errr + i_errorr;
-  
+  m0 = th - pitch_err + Dp*d_errp - i_errorp + roll_err - Dr*d_errr + i_errorr;
+  m1 = th + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;
+  m2 = th - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr;
+  m3 = th + pitch_err - Dp*d_errp + i_errorp - roll_err + Dr*d_errr - i_errorr;
 
-  // NEW set 0, 2
+  //NEW set 0, 2
   set_PWM(0,m0);
-  set_PWM(2,m2);
-
-  // NEW set 1,3
   set_PWM(1,m1);
+  set_PWM(2,m2);
   set_PWM(3,m3);
   
   //Print
-  if(printing &&  counter % 100 == 0){
-    // printf("%f,%f,%f,%f,%f,%f\n\r",pitch_filt_now,pitch_angle,m02,m02,m13,m13);
-    // printf("%f,%f\n\r",pitch_filt_now,pitchcmd);
-    printf("%f,%f\n\r",roll_filt_now,rollcmd);
+  if(printing){
+    pFile = fopen("data.txt","a+");
+    fprintf(pFile, "%f,%f, %f\n\r",rollcmd, roll_filt_now);
+    fclose(pFile);
   }
-  counter++;
 }
 
 void read_in_params(){
   float input;
   bool reading = true;
   while(reading){
-    puts("Param Selection:\n\r 0 for P\n\r 1 for I\n\r 2 for D\n\r 3 for MaxPWM\n\r 4 for A\n\r 5 for Neutral\n\r 6 for Max_I\n\r 7 for printing\n\r 8 to exit/Default\n\r");
+    puts("Param Selection:\n\r 0 for Pr\n\r 1 for Ir\n\r 2 for Dr\n\r 3 for MaxPWM\n\r 4 for A\n\r 5 for Neutral\n\r 6 for Max_I\n\r 7 for printing\n\r 8 to exit/Default\n\r");
     scanf("%f",&input);
     if(input == 0.0){
-      scanf("%f", &P);
-      printf("P Set to: %f\n\r",P);
+      scanf("%f", &Pr);
+      printf("Pr Set to: %f\n\r",Pr);
     }
     else if(input == 1.0){
-      scanf("%f", &I);
-      printf("I Set to: %f\n\r",I);
+      scanf("%f", &Ir);
+      printf("Ir Set to: %f\n\r",Ir);
     }
     else if(input == 2.0){
-      scanf("%f", &D);
-      printf("D Set to: %f\n\r",D);
+      scanf("%f", &Dr);
+      printf("Dr Set to: %f\n\r",Dr);
     }
     else if(input == 3.0){
       scanf("%f", &PWM_MAX);
@@ -634,10 +640,6 @@ void read_in_params(){
       scanf("%f", &A_CONST);
       printf("A Set to: %f\n\r",A_CONST);
      }
-    // else if(input == 5.0){
-    //   scanf("%f", &NEUTRAL_POWER);
-    //   printf("Neutral Speed Set to: %f\n\r",NEUTRAL_POWER);
-    //}
     else if(input == 6.0){
       scanf("%f", &MAX_I);
       printf("Max I Set to: %f\n\r",MAX_I);
