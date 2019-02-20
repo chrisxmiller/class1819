@@ -126,9 +126,9 @@ float Ip = 0.00;
 float Dp = 0.0;
 
 //Tunable Parameters - Roll
-float Pr = 0.0;
-float Ir = 0.0;
-float Dr = 0.0;
+float Pr = 7.0;
+float Ir = 0.00;
+float Dr = 300.0;
 
 //Tunable Parameters
 float PWM_MAX = 1650;
@@ -358,8 +358,9 @@ void update_filter(){
   
   //comp. filter for roll
   roll_int = roll_int + imu_data[1]*imu_diff;
-  roll_filt_now = (roll_angle*A_CONST) + (1.0-A_CONST)*(-imu_data[1]*imu_diff+roll_filt_old);
+  roll_filt_now = (roll_angle*A_CONST) + (1.0-A_CONST)*(imu_data[1]*imu_diff+roll_filt_old);
   roll_filt_old = roll_filt_now;
+  //printf("%f,%f,%f\n\r", roll_int,roll_angle,roll_filt_now);
 
   //comp. filter for pitch
   pitch_int = pitch_int + imu_data[0]*imu_diff;
@@ -595,21 +596,21 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
 
   float th = float(keypad->thrust)*-1.79 + 1629.0;
 
-  m0 = th - pitch_err + Dp*d_errp - i_errorp + roll_err - Dr*d_errr + i_errorr;
-  m1 = th + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;
-  m2 = th - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr;
-  m3 = th + pitch_err - Dp*d_errp + i_errorp - roll_err + Dr*d_errr - i_errorr;
+  m0 = th - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr;
+  m1 = th + pitch_err - Dp*d_errp + i_errorp - roll_err + Dr*d_errr - i_errorr;
+  m2 = th - pitch_err + Dp*d_errp - i_errorp + roll_err - Dr*d_errr + i_errorr;
+  m3 = th + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;
 
   //NEW set 0, 2
   set_PWM(0,m0);
   set_PWM(1,m1);
   set_PWM(2,m2);
   set_PWM(3,m3);
-  
+
   //Print
   if(printing){
     pFile = fopen("data.txt","a+");
-    fprintf(pFile, "%f,%f, %f\n\r",rollcmd, roll_filt_now);
+    fprintf(pFile, "%f,%f,%f\n\r",roll_filt_now, imu_data[1], roll_angle);
     fclose(pFile);
   }
 }
