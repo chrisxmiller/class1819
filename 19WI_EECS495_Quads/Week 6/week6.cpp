@@ -29,6 +29,12 @@
 #define LED0_OFF_L 0x8		
 #define LED0_OFF_H 0x9		
 #define LED_MULTIPLYER 4
+#define PWM_MAX 1600
+#define MINJS 16
+#define MAXJS 240
+#define NEUJS 128
+#define ANGABS 10
+#define YAWABS 100
 
 enum Ascale {
   AFS_2G = 0,
@@ -68,6 +74,7 @@ void set_PWM(uint8_t channel, float time_on_us);
 void pid_update(float pitch, float roll, Keyboard* keyboard);
 void keypress_check(Keyboard* keyboard);
 float yaw_control(Keyboard* keypad, float rotation);
+void computeLinearStuff();
 
 //variables
 int imu;
@@ -132,15 +139,33 @@ float Ir = 0.01;
 float Dr = 300.0;
 
 //Tunable Parameters - Yaw
-float Py = 0.35;
+float Py = 0.25;
 
 //Tunable Parameters
-float PWM_MAX = 1500;
+float PWM_MAXc = 1450;
+float PWM_NEUc = 1350;
+float PWM_MINc = 1300;
 float A_CONST = 0.0025;
 float MAX_I = 50.0;
 bool printing = false;
 bool pauser = false;
 FILE *pFile;
+
+//---Equation Vars---
+
+//Roll/Pitch
+float mr = 0;
+float mp = 0;
+float br = 0;
+float bp = 0;
+
+//Thrust
+float mth = 0;
+float bth = 0;
+
+//Yaw 
+float mya = 0;
+float bya = 0;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -179,6 +204,7 @@ int main (int argc, char *argv[]){
   calibrate_imu();
   setup_keyboard();
   signal(SIGINT, &trap);
+  computeLinearStuff();
  
   while(run_program == 1){
     //to refresh values from shared memory first 
@@ -210,6 +236,24 @@ int main (int argc, char *argv[]){
     }
   }
   return 0;
+}
+
+void computeLinearStuff(){
+  //PITCH
+  mp = (ANGABS + ANGABS)/(MINJS - MAXJS);
+  bp = PWM_NEUc - NEUJS*mp;
+
+  //ROLL
+  mr = -mp;
+  br = -bp;
+
+  //YAW
+  mya = (200.0)/(MAXJS - MINJS);
+  bya = 0.0 - NEUJS*mya;
+
+  //THRUST
+  mth = (PWM_MAXc - PWM_MINc)/(MINJS - MAXJS);
+  bth = PWM_NEUc - NEUJS*mth;
 }
 
 void calibrate_imu(){
@@ -552,10 +596,10 @@ void init_pwm(){
 }
 
 void pid_update(float pitch, float roll, Keyboard* keypad){
-  float pitchcmd = int((float(keypad->pitch)*(-0.1786))+22.86);
-  float rollcmd = int((float(keypad->roll)*(0.1786))-22.8);
+  float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4);
+  float rollcmd = int((float(keypad->roll)*(0.0893))-11.4);
   float yaw = yaw_control(keypad, imu_data[2]);
-
+  
   //Error Computation 
   float pitch_err = Pp*(pitchcmd - pitch);
   float roll_err = Pr*(rollcmd - roll);
@@ -586,12 +630,18 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
     i_errorr = -MAX_I;
   }
 
+  //Ground test
   float th = float(keypad->thrust)*-1.34 + 1437.0;
+  //printf("%f,%f,%f,%f\n\r",keypad->thrust, mth, bth, th);
+  //Hand Test
+  //float th = float(keypad->thrust)*-1.34 + 1437.0;
+  //Flight
+  //float th = float(keypad->thrust)*-1.34 + 1437.0;  
 
-  m0 = th - yaw;//th - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr; - yaw;
-  m1 = th + yaw;//th + pitch_err - Dp*d_errp + i_errorp - roll_err + Dr*d_errr - i_errorr; + yaw;
-  m2 = th + yaw;//th - pitch_err + Dp*d_errp - i_errorp + roll_err - Dr*d_errr + i_errorr;// + yaw;
-  m3 = th - yaw;//th + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;//; - yaw;
+  m0 = th - yaw - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr; 
+  m1 = th + yaw + pitch_err - Dp*d_errp + i_errorp - roll_err + Dr*d_errr - i_errorr; 
+  m2 = th + yaw - pitch_err + Dp*d_errp - i_errorp + roll_err - Dr*d_errr + i_errorr;
+  m3 = th - yaw + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;
 
   //NEW set 0, 2
   set_PWM(0,m0);
@@ -625,10 +675,10 @@ void read_in_params(){
       scanf("%f", &Dr);
       printf("Dr Set to: %f\n\r",Dr);
     }
-    else if(input == 3.0){
-      scanf("%f", &PWM_MAX);
-      printf("PWM_MAX Set to: %f\n\r",PWM_MAX);
-    }
+    // else if(input == 3.0){
+    //   scanf("%f", &PWM_MAX);
+    //   printf("PWM_MAX Set to: %f\n\r",PWM_MAX);
+    //}
     else if(input == 4.0){
       scanf("%f", &A_CONST);
       printf("A Set to: %f\n\r",A_CONST);
@@ -672,7 +722,7 @@ void keypress_check(Keyboard* keypad){
 }
 
 float yaw_control(Keyboard* keypad, float rotation){
-  float yawcmd = int((float(keypad->yaw)*(0.8928))-114.0);
+  float yawcmd = int((float(keypad->yaw)*(1.34))-171.0);
   float yaw_out = Py * (yawcmd - rotation);
   return yaw_out;  
 }
