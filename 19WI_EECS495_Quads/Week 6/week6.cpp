@@ -67,6 +67,7 @@ void init_pwm();
 void set_PWM(uint8_t channel, float time_on_us);
 void pid_update(float pitch, float roll, Keyboard* keyboard);
 void keypress_check(Keyboard* keyboard);
+float yaw_control(Keyboard* keypad, float rotation);
 
 //variables
 int imu;
@@ -121,36 +122,25 @@ float i_errorp = 0.0;
 float i_errorr = 0.0;
 
 //Tunable Parameters - Pitch
-float Pp = 0;//7;
-float Ip = 0;//0.01;
-float Dp = 0;//300.0;
+float Pp = 7.0;
+float Ip = 0.01;
+float Dp = 300.0;
 
 //Tunable Parameters - Roll
 float Pr = 7.0;
 float Ir = 0.01;
 float Dr = 300.0;
 
+//Tunable Parameters - Yaw
+float Py = 0.35;
+
 //Tunable Parameters
-float PWM_MAX = 1300;
+float PWM_MAX = 1500;
 float A_CONST = 0.0025;
 float MAX_I = 50.0;
 bool printing = false;
 bool pauser = false;
 FILE *pFile;
-
-// Pitch PID
-// float P = 7;
-// float I = 0.01;
-// float D = 300.0;
-
-// //Tunable Parameters - Roll
-// float P = 12.0;
-// float I = 0.003;
-// float D = 180.0;
-// float PWM_MAX = 1600;
-// float A_CONST = 0.005;
-// float MAX_I = 50.0;
-// bool printing = false;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -563,7 +553,9 @@ void init_pwm(){
 
 void pid_update(float pitch, float roll, Keyboard* keypad){
   float pitchcmd = int((float(keypad->pitch)*(-0.1786))+22.86);
-  float rollcmd = int((float(keypad->roll)*(-0.1786))+22.86);
+  float rollcmd = int((float(keypad->roll)*(0.1786))-22.8);
+  float yaw = yaw_control(keypad, imu_data[2]);
+
   //Error Computation 
   float pitch_err = Pp*(pitchcmd - pitch);
   float roll_err = Pr*(rollcmd - roll);
@@ -594,12 +586,12 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
     i_errorr = -MAX_I;
   }
 
-  float th = float(keypad->thrust)*-1.79 + 1629.0;
+  float th = float(keypad->thrust)*-1.34 + 1437.0;
 
-  m0 = th - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr;
-  m1 = th + pitch_err - Dp*d_errp + i_errorp - roll_err + Dr*d_errr - i_errorr;
-  m2 = th - pitch_err + Dp*d_errp - i_errorp + roll_err - Dr*d_errr + i_errorr;
-  m3 = th + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;
+  m0 = th - yaw;//th - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr; - yaw;
+  m1 = th + yaw;//th + pitch_err - Dp*d_errp + i_errorp - roll_err + Dr*d_errr - i_errorr; + yaw;
+  m2 = th + yaw;//th - pitch_err + Dp*d_errp - i_errorp + roll_err - Dr*d_errr + i_errorr;// + yaw;
+  m3 = th - yaw;//th + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;//; - yaw;
 
   //NEW set 0, 2
   set_PWM(0,m0);
@@ -677,4 +669,10 @@ void keypress_check(Keyboard* keypad){
     pauseMotors = false;
     printf("MOTORS UNPAUSED\n\r");
   }
+}
+
+float yaw_control(Keyboard* keypad, float rotation){
+  float yawcmd = int((float(keypad->yaw)*(0.8928))-114.0);
+  float yaw_out = Py * (yawcmd - rotation);
+  return yaw_out;  
 }
