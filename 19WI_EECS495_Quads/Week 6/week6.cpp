@@ -139,7 +139,7 @@ float Ir = 0.01;
 float Dr = 300.0;
 
 //Tunable Parameters - Yaw
-float Py = 0.25;
+float Py = 0.40;
 
 //Tunable Parameters
 float PWM_MAXc = 1450;
@@ -596,8 +596,8 @@ void init_pwm(){
 }
 
 void pid_update(float pitch, float roll, Keyboard* keypad){
-  float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4);
-  float rollcmd = int((float(keypad->roll)*(0.0893))-11.4);
+  float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4)/2.0;
+  float rollcmd = int((float(keypad->roll)*(0.0893))-11.4)/2.0;
   float yaw = yaw_control(keypad, imu_data[2]);
   
   //Error Computation 
@@ -722,7 +722,7 @@ void keypress_check(Keyboard* keypad){
 }
 
 float yaw_control(Keyboard* keypad, float rotation){
-  float yawcmd = int((float(keypad->yaw)*(1.34))-171.0);
+  float yawcmd = int((float(keypad->yaw)*(1.34))-171.0)/2.0;
   float yaw_out = Py * (yawcmd - rotation);
   return yaw_out;  
 }
