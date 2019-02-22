@@ -121,9 +121,9 @@ float i_errorp = 0.0;
 float i_errorr = 0.0;
 
 //Tunable Parameters - Pitch
-float Pp = 0;//7;
-float Ip = 0;//0.01;
-float Dp = 0;//300.0;
+float Pp = 7;
+float Ip = 0.01;
+float Dp = 300.0;
 
 //Tunable Parameters - Roll
 float Pr = 7.0;
@@ -137,20 +137,6 @@ float MAX_I = 50.0;
 bool printing = false;
 bool pauser = false;
 FILE *pFile;
-
-// Pitch PID
-// float P = 7;
-// float I = 0.01;
-// float D = 300.0;
-
-// //Tunable Parameters - Roll
-// float P = 12.0;
-// float I = 0.003;
-// float D = 180.0;
-// float PWM_MAX = 1600;
-// float A_CONST = 0.005;
-// float MAX_I = 50.0;
-// bool printing = false;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -562,9 +548,11 @@ void init_pwm(){
 }
 
 void pid_update(float pitch, float roll, Keyboard* keypad){
+  //Read in commands from Pitch, Roll on JS
   float pitchcmd = int((float(keypad->pitch)*(-0.1786))+22.86);
   float rollcmd = int((float(keypad->roll)*(-0.1786))+22.86);
-  //Error Computation 
+  
+  // Proportional Error Computation 
   float pitch_err = Pp*(pitchcmd - pitch);
   float roll_err = Pr*(rollcmd - roll);
   
@@ -586,7 +574,6 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   else if(i_errorp < -MAX_I){
     i_errorp = -MAX_I;
   }
-
   if(i_errorr > MAX_I){
     i_errorr = MAX_I;
   }
@@ -594,20 +581,22 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
     i_errorr = -MAX_I;
   }
 
+  //Read in Thrust
   float th = float(keypad->thrust)*-1.79 + 1629.0;
 
+  //Compute motor commands - see PPT for notes
   m0 = th - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr;
   m1 = th + pitch_err - Dp*d_errp + i_errorp - roll_err + Dr*d_errr - i_errorr;
   m2 = th - pitch_err + Dp*d_errp - i_errorp + roll_err - Dr*d_errr + i_errorr;
   m3 = th + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;
 
-  //NEW set 0, 2
+  //Set Motors
   set_PWM(0,m0);
   set_PWM(1,m1);
   set_PWM(2,m2);
   set_PWM(3,m3);
 
-  //Print
+  //Print to file if Printing is true (set at runtime in terminal)
   if(printing){
     pFile = fopen("data.txt","a+");
     fprintf(pFile, "%f,%f,%f\n\r",rollcmd, roll_filt_now);
