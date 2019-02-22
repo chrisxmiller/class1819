@@ -117,8 +117,6 @@ bool pauseMotors = false;
 int pwm;
 
 //Pitch PID controller 
-// float m02 = 0;
-// float m13 = 0;
 float m0 = 0;
 float m1 = 0;
 float m2 = 0;
@@ -150,22 +148,6 @@ float MAX_I = 50.0;
 bool printing = false;
 bool pauser = false;
 FILE *pFile;
-
-//---Equation Vars---
-
-//Roll/Pitch
-float mr = 0;
-float mp = 0;
-float br = 0;
-float bp = 0;
-
-//Thrust
-float mth = 0;
-float bth = 0;
-
-//Yaw 
-float mya = 0;
-float bya = 0;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -596,11 +578,12 @@ void init_pwm(){
 }
 
 void pid_update(float pitch, float roll, Keyboard* keypad){
+  //Read in pitch, roll, and yaw commands
   float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4)/2.0;
   float rollcmd = int((float(keypad->roll)*(0.0893))-11.4)/2.0;
   float yaw = yaw_control(keypad, imu_data[2]);
   
-  //Error Computation 
+  //Error (P-type) Computation 
   float pitch_err = Pp*(pitchcmd - pitch);
   float roll_err = Pr*(rollcmd - roll);
   
@@ -630,26 +613,22 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
     i_errorr = -MAX_I;
   }
 
-  //Ground test
+  //Read in thrust for groundtest
   float th = float(keypad->thrust)*-1.34 + 1437.0;
-  //printf("%f,%f,%f,%f\n\r",keypad->thrust, mth, bth, th);
-  //Hand Test
-  //float th = float(keypad->thrust)*-1.34 + 1437.0;
-  //Flight
-  //float th = float(keypad->thrust)*-1.34 + 1437.0;  
 
+  //Compute motor commands - see PPT for notes
   m0 = th - yaw - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr; 
   m1 = th + yaw + pitch_err - Dp*d_errp + i_errorp - roll_err + Dr*d_errr - i_errorr; 
   m2 = th + yaw - pitch_err + Dp*d_errp - i_errorp + roll_err - Dr*d_errr + i_errorr;
   m3 = th - yaw + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;
 
-  //NEW set 0, 2
+  //Set Motors
   set_PWM(0,m0);
   set_PWM(1,m1);
   set_PWM(2,m2);
   set_PWM(3,m3);
 
-  //Print
+  //Print to file if Printing is true (set at runtime in terminal)
   if(printing){
     pFile = fopen("data.txt","a+");
     fprintf(pFile, "%f,%f,%f\n\r",rollcmd, roll_filt_now);
@@ -722,7 +701,9 @@ void keypress_check(Keyboard* keypad){
 }
 
 float yaw_control(Keyboard* keypad, float rotation){
+  //Read in yaw command
   float yawcmd = int((float(keypad->yaw)*(1.34))-171.0)/2.0;
+  //Track the yaw error based on the rotation from gyro
   float yaw_out = Py * (yawcmd - rotation);
   return yaw_out;  
 }
