@@ -1,0 +1,9 @@
+#/bin/bash
+
+FILE1=$1
+
+sshpass -p 'raspberry' scp $FILE1 pi@quad:/home/pi/flight_controller
+
+sshpass -p 'raspberry' ssh -t pi@quad 'cd flight_controller/; rm -rf flight; bash'
+
+EOF

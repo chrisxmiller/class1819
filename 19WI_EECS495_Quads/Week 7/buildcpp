@@ -1,0 +1,4 @@
+#/bin/bash
+
+FILE1=$1
+gcc -o flight $FILE1 -lwiringPi -lncurses -lm
