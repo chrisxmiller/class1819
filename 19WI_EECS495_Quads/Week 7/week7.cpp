@@ -125,26 +125,29 @@ float old_pitch = 0.0;
 float old_roll = 0.0;
 float i_errorp = 0.0;
 float i_errorr = 0.0;
+float i_errory = 0.0;
 
 //Tunable Parameters - Pitch
 float Pp = 7.0;
 float Ip = 0.01;
 float Dp = 300.0;
+float MAX_Ip = 50.0;
 
 //Tunable Parameters - Roll
 float Pr = 7.0;
 float Ir = 0.01;
 float Dr = 300.0;
+float MAX_Ir = 50.0;
 
 //Tunable Parameters - Yaw
-float Py = 0.40;
+float Py = 1.50;
+float Iy = 0.05;
+float MAX_Iy = 50;
+float old_yaw = 0;
 
 //Tunable Parameters
-float PWM_MAXc = 1450;
-float PWM_NEUc = 1350;
-float PWM_MINc = 1300;
 float A_CONST = 0.0025;
-float MAX_I = 50.0;
+
 bool printing = false;
 bool pauser = false;
 FILE *pFile;
@@ -205,6 +208,9 @@ int main (int argc, char *argv[]){
         set_PWM(2, 1000);
         set_PWM(3, 1000);
         pauser = false;
+        i_errorp = 0.0;
+        i_errorr = 0.0;
+        i_errory = 0.0;
       }
     }
     else{
@@ -221,21 +227,22 @@ int main (int argc, char *argv[]){
 }
 
 void computeLinearStuff(){
-  //PITCH
-  mp = (ANGABS + ANGABS)/(MINJS - MAXJS);
-  bp = PWM_NEUc - NEUJS*mp;
+  // //PITCH
+  // mp = (ANGABS + ANGABS)/(MINJS - MAXJS);
+  // bp = PWM_NEUc - NEUJS*mp;
 
-  //ROLL
-  mr = -mp;
-  br = -bp;
+  // //ROLL
+  // mr = -mp;
+  // br = -bp;
 
-  //YAW
-  mya = (200.0)/(MAXJS - MINJS);
-  bya = 0.0 - NEUJS*mya;
+  // //YAW
+  // mya = (200.0)/(MAXJS - MINJS);
+  // bya = 0.0 - NEUJS*mya;
 
-  //THRUST
-  mth = (PWM_MAXc - PWM_MINc)/(MINJS - MAXJS);
-  bth = PWM_NEUc - NEUJS*mth;
+  // //THRUST
+  // mth = (PWM_MAXc - PWM_MINc)/(MINJS - MAXJS);
+  // bth = PWM_NEUc - NEUJS*mth;
+  return;
 }
 
 void calibrate_imu(){
@@ -579,8 +586,8 @@ void init_pwm(){
 
 void pid_update(float pitch, float roll, Keyboard* keypad){
   //Read in pitch, roll, and yaw commands
-  float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4)/2.0;
-  float rollcmd = int((float(keypad->roll)*(0.0893))-11.4)/2.0;
+  float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4);
+  float rollcmd = int((float(keypad->roll)*(0.0893))-11.4);
   float yaw = yaw_control(keypad, imu_data[2]);
   
   //Error (P-type) Computation 
@@ -594,30 +601,29 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   float d_errr = roll - old_roll;
   old_roll = roll;
 
-  //I term integration 
   i_errorp += Ip*pitch_err;
   i_errorr += Ir*roll_err;
 
   //Integrator wind up prevention
-  if(i_errorp > MAX_I){
-    i_errorp = MAX_I;
+  if(i_errorp > MAX_Ip){
+    i_errorp = MAX_Ip;
   }
-  else if(i_errorp < -MAX_I){
-    i_errorp = -MAX_I;
+  else if(i_errorp < -MAX_Ip){
+    i_errorp = -MAX_Ip;
   }
 
-  if(i_errorr > MAX_I){
-    i_errorr = MAX_I;
+  if(i_errorr > MAX_Ir){
+    i_errorr = MAX_Ir;
   }
-  else if(i_errorr < -MAX_I){
-    i_errorr = -MAX_I;
+  else if(i_errorr < -MAX_Ir){
+    i_errorr = -MAX_Ir;
   }
 
   //Read in thrust for groundtest
-  float th = float(keypad->thrust)*-1.34 + 1437.0;
+  float th = (-(float(keypad->thrust)/128.0)*200) + 1680.0;
 
   //Compute motor commands - see PPT for notes
-  m0 = th - yaw - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr; 
+  m0 = th - yaw - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr;
   m1 = th + yaw + pitch_err - Dp*d_errp + i_errorp - roll_err + Dr*d_errr - i_errorr; 
   m2 = th + yaw - pitch_err + Dp*d_errp - i_errorp + roll_err - Dr*d_errr + i_errorr;
   m3 = th - yaw + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;
@@ -631,7 +637,7 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   //Print to file if Printing is true (set at runtime in terminal)
   if(printing){
     pFile = fopen("data.txt","a+");
-    fprintf(pFile, "%f,%f,%f\n\r",rollcmd, roll_filt_now);
+    fprintf(pFile, "%f,%f,%f,%f\n\r", pitchcmd, pitch_filt_now, rollcmd, roll_filt_now);
     fclose(pFile);
   }
 }
@@ -663,8 +669,8 @@ void read_in_params(){
       printf("A Set to: %f\n\r",A_CONST);
      }
     else if(input == 6.0){
-      scanf("%f", &MAX_I);
-      printf("Max I Set to: %f\n\r",MAX_I);
+      scanf("%f", &MAX_Ir);
+      printf("Max I Set to: %f\n\r",MAX_Ir);
     }
     else if(input == 7.0){
       puts("BOOL: 1 or 0 only\n\r");
@@ -702,8 +708,20 @@ void keypress_check(Keyboard* keypad){
 
 float yaw_control(Keyboard* keypad, float rotation){
   //Read in yaw command
-  float yawcmd = int((float(keypad->yaw)*(1.34))-171.0)/2.0;
+  float yawcmd = int((float(keypad->yaw)*(1.34))-171.0);
   //Track the yaw error based on the rotation from gyro
-  float yaw_out = Py * (yawcmd - rotation);
+  float yaw_err = Py * (yawcmd - rotation);
+
+  i_errory += Iy*yaw_err;
+
+  if(i_errory > MAX_Iy){
+    i_errory = MAX_Iy;
+  }
+  else if(i_errory < -MAX_Iy){
+    i_errory = -MAX_Iy;
+  }
+
+  float yaw_out = yaw_err + i_errory;
+
   return yaw_out;  
 }
