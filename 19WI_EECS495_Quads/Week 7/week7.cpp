@@ -29,7 +29,7 @@
 #define LED0_OFF_L 0x8		
 #define LED0_OFF_H 0x9		
 #define LED_MULTIPLYER 4
-#define PWM_MAX 1600
+#define PWM_MAX 2000
 #define MINJS 16
 #define MAXJS 240
 #define NEUJS 128
@@ -128,19 +128,19 @@ float i_errorr = 0.0;
 float i_errory = 0.0;
 
 //Tunable Parameters - Pitch
-float Pp = 7.0;
+float Pp = 6.5;
 float Ip = 0.01;
-float Dp = 300.0;
+float Dp = 195.0;
 float MAX_Ip = 50.0;
 
 //Tunable Parameters - Roll
-float Pr = 7.0;
-float Ir = 0.01;
-float Dr = 300.0;
+float Pr = Pp;
+float Ir = Ip;
+float Dr = Dp;
 float MAX_Ir = 50.0;
 
 //Tunable Parameters - Yaw
-float Py = 1.50;
+float Py = 0.60;
 float Iy = 0.05;
 float MAX_Iy = 50;
 float old_yaw = 0;
@@ -586,9 +586,12 @@ void init_pwm(){
 
 void pid_update(float pitch, float roll, Keyboard* keypad){
   //Read in pitch, roll, and yaw commands
-  float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4);
-  float rollcmd = int((float(keypad->roll)*(0.0893))-11.4);
+  float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4)*1.3;
+  float rollcmd = int((float(keypad->roll)*(0.0893))-11.4)*1.3;
   float yaw = yaw_control(keypad, imu_data[2]);
+
+  //Read in thrust
+  float th = (-(float(keypad->thrust)/128.0)*200) + 1680.0;
   
   //Error (P-type) Computation 
   float pitch_err = Pp*(pitchcmd - pitch);
@@ -618,9 +621,6 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   else if(i_errorr < -MAX_Ir){
     i_errorr = -MAX_Ir;
   }
-
-  //Read in thrust for groundtest
-  float th = (-(float(keypad->thrust)/128.0)*200) + 1680.0;
 
   //Compute motor commands - see PPT for notes
   m0 = th - yaw - pitch_err + Dp*d_errp - i_errorp - roll_err + Dr*d_errr - i_errorr;
