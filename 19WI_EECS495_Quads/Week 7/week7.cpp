@@ -586,8 +586,8 @@ void init_pwm(){
 
 void pid_update(float pitch, float roll, Keyboard* keypad){
   //Read in pitch, roll, and yaw commands
-  float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4)*1.3;
-  float rollcmd = int((float(keypad->roll)*(0.0893))-11.4)*1.3;
+  float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4)*1.0;
+  float rollcmd = int((float(keypad->roll)*(0.0893))-11.4)*1.0;
   float yaw = yaw_control(keypad, imu_data[2]);
 
   //Read in thrust
