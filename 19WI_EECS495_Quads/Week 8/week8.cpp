@@ -79,6 +79,7 @@ void pid_update(float pitch, float roll, Keyboard* keyboard);
 void keypress_check(Keyboard* keyboard);
 float yaw_control(Keyboard* keypad, float rotation);
 void computeLinearStuff();
+void calibrate_vive();
 
 //variables
 int imu;
@@ -156,20 +157,22 @@ bool printing = false;
 bool pauser = false;
 FILE *pFile;
 
-//Vive sensor
-float x_cal = 0.0;
-float y_cal = 0.0;
-float z_cal = 0.0;
-float yaw_cal = 0.0;
+//Vive sensor calibration and HB
+float x_pos_desired = 0.0;
+float y_pos_desired = 0.0;
 
 int vive_hb_now = 0;
 int vive_hb_old = 0;
-
 long timer_now_vive;
 long timer_old_vive;
 float timer_vive = 0.0;
 struct timespec te_vive;
 
+//Vive measures now
+float x_now = 0.0;
+float y_now = 0.0;
+float z_now = 0.0;
+float yaw_m = 0.0;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -177,7 +180,7 @@ void trap(int signal){
     printf("Kill Button Pressed! \n\r");
   } 
   if(signal == 2){
-    printf("Controller HB Timeout \n\r");
+    printf("Controller HB Timeout or CTRL+C \n\r");
   }
   if(signal == 3){
     printf("Gyrorate Timeout \n\r");
@@ -215,9 +218,10 @@ int main (int argc, char *argv[]){
   setup_keyboard();
   init_shared_memory();
   signal(SIGINT, &trap);
+  calibrate_vive();
 
   while(run_program == 1){
-    //run this command at the start of the while(1) loop to refresh vive data
+    //Refresh vive data 
     local_p=*position; 
     //to refresh values from shared memory first 
     //Keyboard keyboard=*shared_memory;
@@ -246,9 +250,16 @@ int main (int argc, char *argv[]){
       roll_angle = (atan2(imu_data[3],-imu_data[5]) * (360.0/(2*M_PI))) - roll_calibration ;
       // x-z is pitch  
       pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) + pitch_calibration;
+
+      //Capture the vive data
+      x_now = local_p.x;
+      y_now = local_p.y;
+      z_now = local_p.z;
+      yaw_m = local_p.yaw;
+
       pid_update(pitch_filt_now, roll_filt_now, shared_memory);
       pauser = true;
-      //printf("%f,%f,%f,%f,%d\n\r", local_p.x, local_p.y, local_p.z, local_p.yaw, local_p.version);
+      printf("%f,%f,%f,%f,%d,%f,%f\n\r", local_p.x, local_p.y, local_p.z, local_p.yaw, local_p.version, x_pos_desired, y_pos_desired);
     }
   }
   return 0;
@@ -280,7 +291,7 @@ void calibrate_imu(){
   //Local variables for calibration only 
   float temp_data[6];
 
-  //Averahe
+  //Average
   for(int i = 0; i < n; i++){
     //Read the IMU
     read_imu();
@@ -306,6 +317,28 @@ void calibrate_imu(){
 
    
  // accel_z_calibration = temp_data[5] / float(n);
+}
+
+void calibrate_vive(){
+  //Read the vive n times; reqs says set n to 1000 
+  int n = 1000;
+
+  //Local variables for calibration only 
+  float temp_data[2];
+  temp_data[0] = 0.0;
+  temp_data[1] = 0.0;
+
+  //Average
+  for(int i = 0; i < n; i++){
+    //Capture the baseline values 
+    local_p=*position; 
+    temp_data[0] += local_p.x; //x
+    temp_data[1] += local_p.y; //y
+  }  
+
+  //Update the global constants, profit
+  x_pos_desired = temp_data[0] / float(n);
+  y_pos_desired = temp_data[1] / float(n);
 }
 
 void read_imu(){
@@ -554,17 +587,14 @@ void safety_check(Keyboard* keyboard){
     timespec_get(&te,TIME_UTC);
     timer_old = te.tv_nsec;
   } 
-
   //Vive HB and Pos Sensing 
   vive_hb_now = local_p.version;
-
   if(vive_hb_now == vive_hb_old){
     update_Time_vive();
     //check if 0.50s have passed
     if(timer_vive >= 0.50){
       trap(5);
     } 
-    // printf("%d,%d,%f\n\r",vive_hb_now,vive_hb_old,timer_vive);     
   }
   else{
     vive_hb_old = vive_hb_now;
@@ -755,7 +785,8 @@ void keypress_check(Keyboard* keypad){
   //Check Keypresses for calibrate
   if(keypad->keypress == 35){
     calibrate_imu();
-    printf("Calibrated IMU\n\r");
+    calibrate_vive();
+    printf("Calibrated IMU and Vive\n\r");
   }
   //Pause motors
   if(keypad->keypress == 33 && !pauseMotors){
