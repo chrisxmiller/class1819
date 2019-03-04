@@ -192,7 +192,7 @@ void trap(int signal){
    printf("Vive HB Timeout \n\r");
   }
   if(signal == 6){
-   printf("Vive Out of Timeout \n\r");
+   printf("Vive Out of Bounds Timeout \n\r");
   }
   printf("Ending Program\n\r");
   set_PWM(0, 1000);
@@ -200,7 +200,6 @@ void trap(int signal){
   set_PWM(2, 1000);
   set_PWM(3, 1000);
   run_program=0;
-
 }
  
 int main (int argc, char *argv[]){
@@ -587,13 +586,21 @@ void safety_check(Keyboard* keyboard){
     timespec_get(&te,TIME_UTC);
     timer_old = te.tv_nsec;
   } 
-  //Vive HB and Pos Sensing 
+  //Vive HB checking  
   vive_hb_now = local_p.version;
   if(vive_hb_now == vive_hb_old){
     update_Time_vive();
     //check if 0.50s have passed
     if(timer_vive >= 0.50){
       trap(5);
+    } 
+  }
+  //Vive out-of-bounds checking
+  else if(abs(x_now) - x_pos_desired > 1000.0 || abs(y_now) - y_pos_desired > 1000.0){
+    update_Time_vive();
+    //check if 0.10s have passed
+    if(timer_vive >= 0.10){
+      trap(6);
     } 
   }
   else{
