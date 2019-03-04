@@ -4,9 +4,8 @@
 #define SH_MEM_ADDR 22222
 
 struct Position {
-   float x,y,z,roll,pitch,yaw, timetaken,rps;
-   float values[8];
-   int version;
+  float x,y,z,yaw;
+  int version;
 };
 
 Position *position;

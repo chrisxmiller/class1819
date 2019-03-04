@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <curses.h>
 #include <stdio.h>
+#include "vive.h"
 
 //gcc -o week1 week_1.cpp -lwiringPi -lncurses -lm
 // Copy from local while on local to remote scp /tmp/file user@example.com:/home/name/dir
@@ -58,6 +59,9 @@ struct Keyboard {
   int thrust;
   int sequence_num;
 };
+
+//declare global struct - Vive
+Position local_p;
 
 //Function declarations
 int setup_imu();
@@ -152,13 +156,28 @@ bool printing = false;
 bool pauser = false;
 FILE *pFile;
 
+//Vive sensor
+float x_cal = 0.0;
+float y_cal = 0.0;
+float z_cal = 0.0;
+float yaw_cal = 0.0;
+
+int vive_hb_now = 0;
+int vive_hb_old = 0;
+
+long timer_now_vive;
+long timer_old_vive;
+float timer_vive = 0.0;
+struct timespec te_vive;
+
+
 //when ctrl+c pressed, kill motors
 void trap(int signal){
   if(signal == 1){
     printf("Kill Button Pressed! \n\r");
   } 
   if(signal == 2){
-    printf("Controller Timeout \n\r");
+    printf("Controller HB Timeout \n\r");
   }
   if(signal == 3){
     printf("Gyrorate Timeout \n\r");
@@ -166,6 +185,12 @@ void trap(int signal){
   if(signal == 4){
     printf("Roll or Pitch Timeout \n\r");
   } 
+  if(signal == 5){
+   printf("Vive HB Timeout \n\r");
+  }
+  if(signal == 6){
+   printf("Vive Out of Timeout \n\r");
+  }
   printf("Ending Program\n\r");
   set_PWM(0, 1000);
   set_PWM(1, 1000);
@@ -188,10 +213,12 @@ int main (int argc, char *argv[]){
   read_in_params();
   calibrate_imu();
   setup_keyboard();
+  init_shared_memory();
   signal(SIGINT, &trap);
-  computeLinearStuff();
- 
+
   while(run_program == 1){
+    //run this command at the start of the while(1) loop to refresh vive data
+    local_p=*position; 
     //to refresh values from shared memory first 
     //Keyboard keyboard=*shared_memory;
     //Run the safety check function 
@@ -199,7 +226,7 @@ int main (int argc, char *argv[]){
     keypress_check(shared_memory);
     read_imu();      
     update_filter();
-    
+
     //If motors paused
     if(pauseMotors){
       if(pauser){
@@ -221,6 +248,7 @@ int main (int argc, char *argv[]){
       pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) + pitch_calibration;
       pid_update(pitch_filt_now, roll_filt_now, shared_memory);
       pauser = true;
+      //printf("%f,%f,%f,%f,%d\n\r", local_p.x, local_p.y, local_p.z, local_p.yaw, local_p.version);
     }
   }
   return 0;
@@ -471,13 +499,30 @@ void update_Time(){
   timer = timer / 1000000000;
 }
 
+void update_Time_vive(){
+  //get current time in nanoseconds
+  timespec_get(&te,TIME_UTC);
+  timer_now_vive=te.tv_nsec;
+
+  //compute time since last execution
+  timer_vive = timer_now_vive - timer_old_vive;           
+            
+  //check for rollover
+  if(timer_vive<=0){
+    timer_vive+=1000000000;
+  }
+  //convert to seconds
+  timer_vive = timer_vive / 1000000000;
+}
+
 void safety_check(Keyboard* keyboard){
   //if space, call trap
-    if(keyboard->keypress == 32){
-      trap(1);
-    }
+  if(keyboard->keypress == 32){
+    trap(1);}
+  
   //if no heart beat, start timer 
   hb_new = keyboard->sequence_num;
+
   //check heartbeat 
   if(hb_new == hb_old){
     update_Time();
@@ -488,26 +533,44 @@ void safety_check(Keyboard* keyboard){
   }
   //Check gyrorate error 
   else if(abs(imu_data[0]) > 300.0 || abs(imu_data[1]) > 300.0 || abs(imu_data[2]) > 300.0){
-      update_Time();
-      //check if 0.10s have passed
-      if(timer >= 0.10){
-        trap(3);
-      }    
+    update_Time();
+    //check if 0.10s have passed
+    if(timer >= 0.10){
+      trap(3);
+    }    
   }
   //Roll or Pitch angle 
   else if(abs(pitch_filt_now) > 45.0 || abs(roll_filt_now) > 45.0 ){
-      update_Time();
-      //check if 0.10s have passed
-      if(timer >= 0.10){
-        trap(4);
-      }   
+    update_Time();
+    //check if 0.10s have passed
+    if(timer >= 0.10){
+      trap(4);
+    }   
   }
-  //Heartbeat updated, no space, no ctrl+c, no roll, pitch, gyro errors, let run. 
   else{
-      hb_old = hb_new; 
-      //get time 
-      timespec_get(&te,TIME_UTC);
-      timer_old = te.tv_nsec; 
+    //Heartbeat updated, no space, no ctrl+c, no roll, pitch, gyro errors, let run. 
+    hb_old = hb_new; 
+    //get time 
+    timespec_get(&te,TIME_UTC);
+    timer_old = te.tv_nsec;
+  } 
+
+  //Vive HB and Pos Sensing 
+  vive_hb_now = local_p.version;
+
+  if(vive_hb_now == vive_hb_old){
+    update_Time_vive();
+    //check if 0.50s have passed
+    if(timer_vive >= 0.50){
+      trap(5);
+    } 
+    // printf("%d,%d,%f\n\r",vive_hb_now,vive_hb_old,timer_vive);     
+  }
+  else{
+    vive_hb_old = vive_hb_now;
+    //get time 
+    timespec_get(&te,TIME_UTC);
+    timer_old_vive = te.tv_nsec; 
   }
 }
 
@@ -629,10 +692,10 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   m3 = th - yaw + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;
 
   //Set Motors
-  set_PWM(0,m0);
-  set_PWM(1,m1);
-  set_PWM(2,m2);
-  set_PWM(3,m3);
+  // set_PWM(0,m0);
+  // set_PWM(1,m1);
+  // set_PWM(2,m2);
+  // set_PWM(3,m3);
 
   //Print to file if Printing is true (set at runtime in terminal)
   if(printing){
