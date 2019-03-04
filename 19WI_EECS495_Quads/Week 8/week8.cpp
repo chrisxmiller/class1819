@@ -36,7 +36,7 @@
 #define NEUJS 128
 #define ANGABS 10
 #define YAWABS 100
-#define THRUST_BASE 1520 //Ground flight 1520, flight 1680
+#define THRUST_BASE 1500 //Ground flight 1520, flight 1680
 #define YAWSETPOINT 0.0
 
 enum Ascale {
@@ -177,7 +177,7 @@ float z_now = 0.0;
 float yaw_m = 0.0;
 
 //Vive Control Params
-float P_yaw_pos = 120;
+float P_yaw_pos = 111;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -263,7 +263,7 @@ int main (int argc, char *argv[]){
 
       pid_update(pitch_filt_now, roll_filt_now, shared_memory);
       pauser = true;
-      printf("%f,%f,%f,%f,%d,%f,%f\n\r", local_p.x, local_p.y, local_p.z, local_p.yaw, local_p.version, x_pos_desired, y_pos_desired);
+      //printf("%f,%f,%f,%f,%d,%f,%f\n\r", local_p.x, local_p.y, local_p.z, local_p.yaw, local_p.version, x_pos_desired, y_pos_desired);
     }
   }
   return 0;
@@ -693,7 +693,7 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   //Read in pitch, roll, and yaw commands
   float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4)*1.0;
   float rollcmd = int((float(keypad->roll)*(0.0893))-11.4)*1.0;
-  float yaw = yaw_control(keypad, imu_data[2], yaw_m, true);
+  float yaw = yaw_control(keypad, imu_data[2], yaw_m, false);
 
   //Read in thrust
   float th = (-(float(keypad->thrust)/128.0)*200) + THRUST_BASE;
