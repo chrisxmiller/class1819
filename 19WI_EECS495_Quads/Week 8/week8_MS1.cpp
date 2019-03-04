@@ -36,8 +36,6 @@
 #define NEUJS 128
 #define ANGABS 10
 #define YAWABS 100
-#define THRUST_BASE 1520 //Ground flight 1520, flight 1680
-#define YAWSETPOINT 0.0
 
 enum Ascale {
   AFS_2G = 0,
@@ -79,7 +77,7 @@ void init_pwm();
 void set_PWM(uint8_t channel, float time_on_us);
 void pid_update(float pitch, float roll, Keyboard* keyboard);
 void keypress_check(Keyboard* keyboard);
-float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnable);
+float yaw_control(Keyboard* keypad, float rotation);
 void computeLinearStuff();
 void calibrate_vive();
 
@@ -175,9 +173,6 @@ float x_now = 0.0;
 float y_now = 0.0;
 float z_now = 0.0;
 float yaw_m = 0.0;
-
-//Vive Control Params
-float P_yaw_pos = 120;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -693,10 +688,10 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   //Read in pitch, roll, and yaw commands
   float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4)*1.0;
   float rollcmd = int((float(keypad->roll)*(0.0893))-11.4)*1.0;
-  float yaw = yaw_control(keypad, imu_data[2], yaw_m, true);
+  float yaw = yaw_control(keypad, imu_data[2]);
 
   //Read in thrust
-  float th = (-(float(keypad->thrust)/128.0)*200) + THRUST_BASE;
+  float th = (-(float(keypad->thrust)/128.0)*200) + 1680.0;
   
   //Error (P-type) Computation 
   float pitch_err = Pp*(pitchcmd - pitch);
@@ -734,10 +729,10 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   m3 = th - yaw + pitch_err - Dp*d_errp + i_errorp + roll_err - Dr*d_errr + i_errorr;
 
   //Set Motors
-  set_PWM(0,m0);
-  set_PWM(1,m1);
-  set_PWM(2,m2);
-  set_PWM(3,m3);
+  // set_PWM(0,m0);
+  // set_PWM(1,m1);
+  // set_PWM(2,m2);
+  // set_PWM(3,m3);
 
   //Print to file if Printing is true (set at runtime in terminal)
   if(printing){
@@ -812,15 +807,9 @@ void keypress_check(Keyboard* keypad){
   }
 }
 
-float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnable){
-  //Read in desired yaw rate
-  float yawcmd = 0.0;
-  if(jsEnable){
-    yawcmd = float((float(keypad->yaw)*(1.34))-171.0);
-  }
-  else{
-    yawcmd = P_yaw_pos*(YAWSETPOINT - vive_yaw);
-  }
+float yaw_control(Keyboard* keypad, float rotation){
+  //Read in yaw command
+  float yawcmd = int((float(keypad->yaw)*(1.34))-171.0);
   //Track the yaw error based on the rotation from gyro
   float yaw_err = Py * (yawcmd - rotation);
 
@@ -833,7 +822,7 @@ float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnabl
     i_errory = -MAX_Iy;
   }
 
-  float yaw_out = int(yaw_err + i_errory);
+  float yaw_out = yaw_err + i_errory;
 
   return yaw_out;  
 }
