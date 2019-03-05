@@ -36,7 +36,6 @@
 #define NEUJS 128
 #define ANGABS 10
 #define YAWABS 100
-#define THRUST_BASE 1500 //Ground flight 1520, flight 1680
 #define YAWSETPOINT 0.0
 
 enum Ascale {
@@ -77,7 +76,7 @@ void safety_check(Keyboard* keyboard);
 void init_motor(uint8_t channel);
 void init_pwm();
 void set_PWM(uint8_t channel, float time_on_us);
-void pid_update(float pitch, float roll, Keyboard* keyboard);
+void pid_update(float pitch, float roll, Keyboard* keyboard, float yaw_reading);
 void keypress_check(Keyboard* keyboard);
 float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnable);
 void computeLinearStuff();
@@ -123,7 +122,7 @@ bool pauseMotors = false;
 // motor pwm 
 int pwm;
 
-//Pitch PID controller 
+//Master PID controller 
 float m0 = 0;
 float m1 = 0;
 float m2 = 0;
@@ -147,15 +146,17 @@ float Dr = Dp;
 float MAX_Ir = 50.0;
 
 //Tunable Parameters - Yaw
-float Py = 0.60;
-float Iy = 0.05;
+float Py = 0.6;
+float Iy = 0.01;
 float MAX_Iy = 50;
 float old_yaw = 0;
 
-//Tunable Parameters
+//Misc Tunable Parameters
 float A_CONST = 0.0025;
+float THRUST_BASE = 1600; //Ground flight 1520, flight 1680
 
-bool printing = false;
+//File Printing/Data Stuff
+bool printing = true;
 bool pauser = false;
 FILE *pFile;
 
@@ -177,7 +178,9 @@ float z_now = 0.0;
 float yaw_m = 0.0;
 
 //Vive Control Params
-float P_yaw_pos = 111;
+float P_yaw_pos = 175;
+float yawcmd = 0.0;
+
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -261,9 +264,8 @@ int main (int argc, char *argv[]){
       z_now = local_p.z;
       yaw_m = local_p.yaw;
 
-      pid_update(pitch_filt_now, roll_filt_now, shared_memory);
+      pid_update(pitch_filt_now, roll_filt_now, shared_memory, yaw_m);
       pauser = true;
-      //printf("%f,%f,%f,%f,%d,%f,%f\n\r", local_p.x, local_p.y, local_p.z, local_p.yaw, local_p.version, x_pos_desired, y_pos_desired);
     }
   }
   return 0;
@@ -689,11 +691,11 @@ void init_pwm(){
     }
 }
 
-void pid_update(float pitch, float roll, Keyboard* keypad){
+void pid_update(float pitch, float roll, Keyboard* keypad, float yaw_reading){
   //Read in pitch, roll, and yaw commands
   float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4)*1.0;
   float rollcmd = int((float(keypad->roll)*(0.0893))-11.4)*1.0;
-  float yaw = yaw_control(keypad, imu_data[2], yaw_m, false);
+  float yaw = yaw_control(keypad, imu_data[2], yaw_reading, false);
 
   //Read in thrust
   float th = (-(float(keypad->thrust)/128.0)*200) + THRUST_BASE;
@@ -742,7 +744,7 @@ void pid_update(float pitch, float roll, Keyboard* keypad){
   //Print to file if Printing is true (set at runtime in terminal)
   if(printing){
     pFile = fopen("data.txt","a+");
-    fprintf(pFile, "%f,%f,%f,%f\n\r", pitchcmd, pitch_filt_now, rollcmd, roll_filt_now);
+    fprintf(pFile, "%f,%f,%f\n\r", YAWSETPOINT,yaw_m,yawcmd);
     fclose(pFile);
   }
 }
@@ -751,24 +753,24 @@ void read_in_params(){
   float input;
   bool reading = true;
   while(reading){
-    puts("Param Selection:\n\r 0 for Pr\n\r 1 for Ir\n\r 2 for Dr\n\r 3 for MaxPWM\n\r 4 for A\n\r 5 for Neutral\n\r 6 for Max_I\n\r 7 for printing\n\r 8 to exit/Default\n\r");
+    puts("Param Selection:\n\r 0 for Py\n\r 1 for Iy\n\r 2 for Py_Vive\n\r 3 for Thrust_base\n\r 8 to exit/Default\n\r");
     scanf("%f",&input);
     if(input == 0.0){
-      scanf("%f", &Pr);
-      printf("Pr Set to: %f\n\r",Pr);
+      scanf("%f", &Py);
+      printf("Pr Set to: %f\n\r",Py);
     }
     else if(input == 1.0){
-      scanf("%f", &Ir);
-      printf("Ir Set to: %f\n\r",Ir);
+      scanf("%f", &Iy);
+      printf("Ir Set to: %f\n\r",Iy);
     }
     else if(input == 2.0){
-      scanf("%f", &Dr);
-      printf("Dr Set to: %f\n\r",Dr);
+      scanf("%f", &P_yaw_pos);
+      printf("P_yaw_pos Set to: %f\n\r",P_yaw_pos);
     }
-    // else if(input == 3.0){
-    //   scanf("%f", &PWM_MAX);
-    //   printf("PWM_MAX Set to: %f\n\r",PWM_MAX);
-    //}
+    else if(input == 3.0){
+      scanf("%f", &THRUST_BASE);
+      printf("THRUST_BASE Set to: %f\n\r",THRUST_BASE);
+    }
     else if(input == 4.0){
       scanf("%f", &A_CONST);
       printf("A Set to: %f\n\r",A_CONST);
@@ -814,18 +816,18 @@ void keypress_check(Keyboard* keypad){
 
 float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnable){
   //Read in desired yaw rate
-  float yawcmd = 0.0;
   if(jsEnable){
     yawcmd = float((float(keypad->yaw)*(1.34))-171.0);
   }
   else{
-    yawcmd = P_yaw_pos*(YAWSETPOINT - vive_yaw);
+    yawcmd = P_yaw_pos * (vive_yaw - YAWSETPOINT);
   }
+
   //Track the yaw error based on the rotation from gyro
   float yaw_err = Py * (yawcmd - rotation);
 
+  //Integrator term for Yaw if needed
   i_errory += Iy*yaw_err;
-
   if(i_errory > MAX_Iy){
     i_errory = MAX_Iy;
   }
@@ -833,6 +835,7 @@ float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnabl
     i_errory = -MAX_Iy;
   }
 
+  //Superposition of terms 
   float yaw_out = int(yaw_err + i_errory);
 
   return yaw_out;  
