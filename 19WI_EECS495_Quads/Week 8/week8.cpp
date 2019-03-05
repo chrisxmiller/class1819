@@ -153,7 +153,7 @@ float old_yaw = 0;
 
 //Misc Tunable Parameters
 float A_CONST = 0.0025;
-float THRUST_BASE = 1600; //Ground flight 1520, flight 1680
+float THRUST_BASE = 1640; //Ground flight 1520, flight 1680
 
 //File Printing/Data Stuff
 bool printing = true;
@@ -193,9 +193,9 @@ float betax = 0.6;
 float betay = 0.6;
 
 float PXV = 0.03;
-float DXV = 0.70;
+float DXV = 1.0;
 float PYV = 0.03;
-float DYV = 0.70;
+float DYV = 1.0;
 
 float vive_x_est_old = 0.0;
 float vive_y_est_old = 0.0;
@@ -203,7 +203,7 @@ float vive_y_est_old = 0.0;
 float vive_dx = 0.0;
 float vive_dy = 0.0;
 
-float alpha = 1.00;
+float alpha = 0.50;
 
 
 //when ctrl+c pressed, kill motors
@@ -867,11 +867,11 @@ void vive_control(Keyboard* keypad){
 
   //when do I use the filter? In this loop or after it? Am I smoothing the pos
   //or am I smoothing this output?
-  float vive_pos_control_x = PXV*(vive_x_est - x_pos_desired) + DXV*(vive_dx);
-  float vive_pos_control_y = PYV*(vive_y_est - y_pos_desired) + DYV*(vive_dy);
+  float vive_pos_control_x =   PXV*(x_pos_desired - vive_x_est) - DXV*(vive_dx);
+  float vive_pos_control_y = - PYV*(y_pos_desired - vive_y_est) - DYV*(vive_dy);
 
   //Blend the user command and the autonomy command using linear blending 
   //These are the variables updated in the primary PID loop. 
-  pitchcmd = alpha*vive_pos_control_y + (1.0 - alpha)*pitch_JS; 
+  pitchcmd = pitch_JS;//alpha*vive_pos_control_y + (1.0 - alpha)*pitch_JS; 
   rollcmd = alpha*vive_pos_control_x + (1.0 - alpha)*roll_JS;
 }
