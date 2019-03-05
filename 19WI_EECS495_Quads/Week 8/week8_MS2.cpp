@@ -80,7 +80,6 @@ void pid_update(float pitch, float roll, Keyboard* keyboard, float yaw_reading);
 void keypress_check(Keyboard* keyboard);
 float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnable);
 void calibrate_vive();
-void vive_control(Keyboard* keypad);
 
 //variables
 int imu;
@@ -182,30 +181,6 @@ float P_yaw_pos = 175;
 float yawcmd = 0.0;
 
 
-//Pitch and Roll commands for inner PID-Tuning
-float pitchcmd;
-float rollcmd;
-
-//Vive x-y vars
-float vive_x_est = 0.0;
-float vive_y_est = 0.0;
-float betax = 0.6;
-float betay = 0.6;
-
-float PXV = 0.03;
-float DXV = 0.70;
-float PYV = 0.03;
-float DYV = 0.70;
-
-float vive_x_est_old = 0.0;
-float vive_y_est_old = 0.0;
-
-float vive_dx = 0.0;
-float vive_dy = 0.0;
-
-float alpha = 1.00;
-
-
 //when ctrl+c pressed, kill motors
 void trap(int signal){
   if(signal == 1){
@@ -288,7 +263,6 @@ int main (int argc, char *argv[]){
       z_now = local_p.z;
       yaw_m = local_p.yaw;
 
-      vive_control(shared_memory);  
       pid_update(pitch_filt_now, roll_filt_now, shared_memory, yaw_m);
       pauser = true;
     }
@@ -698,7 +672,9 @@ void init_pwm(){
 }
 
 void pid_update(float pitch, float roll, Keyboard* keypad, float yaw_reading){
-  //Read in yaw commands
+  //Read in pitch, roll, and yaw commands
+  float pitchcmd = int((float(keypad->pitch)*(-0.0893))+11.4)*1.0;
+  float rollcmd = int((float(keypad->roll)*(0.0893))-11.4)*1.0;
   float yaw = yaw_control(keypad, imu_data[2], yaw_reading, false);
 
   //Read in thrust
@@ -843,35 +819,4 @@ float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnabl
   float yaw_out = int(yaw_err + i_errory);
 
   return yaw_out;  
-}
-
-void vive_control(Keyboard* keypad){
-  //Read in Pitch, roll
-  float pitch_JS = int((float(keypad->pitch)*(-0.0893))+11.4)*1.0;
-  float roll_JS = int((float(keypad->roll)*(0.0893))-11.4)*1.0;
-
-  //EMA filter on x-y pos
-  vive_x_est = vive_x_est*betax +(1.0-betax)*x_now;
-  vive_y_est = vive_y_est*betay +(1.0-betay)*y_now;
-
-  //PID on X-Y pos
-  //For D-term, only update on new inputs
-  if(local_p.version != vive_hb_old){
-    //Compute the derivative 
-    vive_dx = vive_x_est - vive_x_est_old;
-    vive_dy = vive_y_est - vive_y_est_old;
-    //Store the old terms
-    vive_x_est_old = vive_x_est;
-    vive_y_est_old = vive_y_est;
-  }
-
-  //when do I use the filter? In this loop or after it? Am I smoothing the pos
-  //or am I smoothing this output?
-  float vive_pos_control_x = PXV*(vive_x_est - x_pos_desired) + DXV*(vive_dx);
-  float vive_pos_control_y = PYV*(vive_y_est - y_pos_desired) + DYV*(vive_dy);
-
-  //Blend the user command and the autonomy command using linear blending 
-  //These are the variables updated in the primary PID loop. 
-  pitchcmd = alpha*vive_pos_control_y + (1.0 - alpha)*pitch_JS; 
-  rollcmd = alpha*vive_pos_control_x + (1.0 - alpha)*roll_JS;
 }
