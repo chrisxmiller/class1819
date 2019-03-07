@@ -145,14 +145,14 @@ float Dr = Dp;
 float MAX_Ir = 50.0;
 
 //Tunable Parameters - Yaw
-float Py = 0.6;
-float Iy = 0.01;
+float Py = 0.60;
+float Iy = 0.05;
 float MAX_Iy = 50;
 float old_yaw = 0;
 
 //Misc Tunable Parameters
 float A_CONST = 0.0025;
-float THRUST_BASE = 1600; //Ground flight 1520, flight 1680
+float THRUST_BASE = 1650; //Ground flight 1520, flight 1680
 
 //File Printing/Data Stuff
 bool printing = true;
@@ -177,7 +177,7 @@ float z_now = 0.0;
 float yaw_m = 0.0;
 
 //Vive Control Params
-float P_yaw_pos = 175;
+float P_yaw_pos = 180;
 float yawcmd = 0.0;
 
 
@@ -806,6 +806,8 @@ float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnabl
   //Track the yaw error based on the rotation from gyro
   float yaw_err = Py * (yawcmd - rotation);
 
+  //printf("%f,%f,%f\n\r",vive_yaw,yawcmd,rotation);
+
   //Integrator term for Yaw if needed
   i_errory += Iy*yaw_err;
   if(i_errory > MAX_Iy){
@@ -816,7 +818,7 @@ float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnabl
   }
 
   //Superposition of terms 
-  float yaw_out = int(yaw_err + i_errory);
+  float yaw_out = (yaw_err + i_errory);
 
   return yaw_out;  
 }

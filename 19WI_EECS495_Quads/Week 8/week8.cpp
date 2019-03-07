@@ -81,6 +81,7 @@ void keypress_check(Keyboard* keyboard);
 float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnable);
 void calibrate_vive();
 void vive_control(Keyboard* keypad);
+void z_cont(Keyboard* keypad);
 
 //variables
 int imu;
@@ -147,7 +148,7 @@ float MAX_Ir = 50.0;
 
 //Tunable Parameters - Yaw
 float Py = 0.6;
-float Iy = 0.01;
+float Iy = 0.05;
 float MAX_Iy = 50;
 float old_yaw = 0;
 
@@ -163,6 +164,7 @@ FILE *pFile;
 //Vive sensor calibration and HB
 float x_pos_desired = 0.0;
 float y_pos_desired = 0.0;
+float z_pos_desired = 0.0;
 
 int vive_hb_now = 0;
 int vive_hb_old = 0;
@@ -178,9 +180,8 @@ float z_now = 0.0;
 float yaw_m = 0.0;
 
 //Vive Control Params
-float P_yaw_pos = 175;
+float P_yaw_pos = 180;
 float yawcmd = 0.0;
-
 
 //Pitch and Roll commands for inner PID-Tuning
 float pitchcmd;
@@ -189,13 +190,13 @@ float rollcmd;
 //Vive x-y vars
 float vive_x_est = 0.0;
 float vive_y_est = 0.0;
-float betax = 0.6;
-float betay = 0.6;
+float betax = 0.75;
+float betay = 0.75;
 
-float PXV = 0.03;
-float DXV = 1.0;
-float PYV = 0.03;
-float DYV = 1.0;
+float PXV = 0.015;
+float DXV = 0.35;
+float PYV = 0.015;
+float DYV = 0.35;
 
 float vive_x_est_old = 0.0;
 float vive_y_est_old = 0.0;
@@ -204,7 +205,29 @@ float vive_dx = 0.0;
 float vive_dy = 0.0;
 
 float alpha = 0.50;
+int old_hb = 0;
 
+//Everything for Z Control
+int counter_z = 1;
+int old_hb_z = 0;
+float z_accel_sum = 0.0;
+float imu_z = 0.0;
+float th = 0.0;
+float z_int = 0.0;
+float v_est = 0.0;
+float prev_vive_z = 0.0;
+float v_est_old = 0.0;
+#define SETPOINTZ 5200
+#define K 50.0
+#define A 0.90
+//PID Params
+#define PVZ 0.07
+#define PIZ 0.003
+#define PDZ 2.00
+#define MAX_Iz 300
+//Shared Control
+#define DESIREDTH 1300
+#define alpha_th 0.50
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -244,7 +267,7 @@ int main (int argc, char *argv[]){
   init_motor(3);
   delay(1000);
    //For reading in the parameters at startup
-  read_in_params();
+  //read_in_params();
   calibrate_imu();
   setup_keyboard();
   init_shared_memory();
@@ -283,12 +306,13 @@ int main (int argc, char *argv[]){
       pitch_angle = -(atan2(imu_data[4],-imu_data[5]) * (360.0/(2*M_PI))) + pitch_calibration;
 
       //Capture the vive data
-      x_now = local_p.x;
-      y_now = local_p.y;
+      x_now = local_p.x - x_pos_desired;
+      y_now = local_p.y - y_pos_desired;
       z_now = local_p.z;
       yaw_m = local_p.yaw;
 
-      vive_control(shared_memory);  
+      vive_control(shared_memory);
+      z_cont(shared_memory);
       pid_update(pitch_filt_now, roll_filt_now, shared_memory, yaw_m);
       pauser = true;
     }
@@ -336,9 +360,10 @@ void calibrate_vive(){
   int n = 1000;
 
   //Local variables for calibration only 
-  float temp_data[2];
+  float temp_data[3];
   temp_data[0] = 0.0;
   temp_data[1] = 0.0;
+  temp_data[2] = 0.0;
 
   //Average
   for(int i = 0; i < n; i++){
@@ -346,11 +371,13 @@ void calibrate_vive(){
     local_p=*position; 
     temp_data[0] += local_p.x; //x
     temp_data[1] += local_p.y; //y
+    temp_data[2] += local_p.z; //z
   }  
 
   //Update the global constants, profit
   x_pos_desired = temp_data[0] / float(n);
   y_pos_desired = temp_data[1] / float(n);
+  z_pos_desired = temp_data[2] / float(n);
 }
 
 void read_imu(){
@@ -609,7 +636,7 @@ void safety_check(Keyboard* keyboard){
     } 
   }
   //Vive out-of-bounds checking
-  else if(abs(x_now) - x_pos_desired > 1000.0 || abs(y_now) - y_pos_desired > 1000.0){
+  else if(abs(x_now) > 1000.0 || abs(y_now) > 1000.0){
     update_Time_vive();
     //check if 0.10s have passed
     if(timer_vive >= 0.10){
@@ -700,9 +727,6 @@ void init_pwm(){
 void pid_update(float pitch, float roll, Keyboard* keypad, float yaw_reading){
   //Read in yaw commands
   float yaw = yaw_control(keypad, imu_data[2], yaw_reading, false);
-
-  //Read in thrust
-  float th = (-(float(keypad->thrust)/128.0)*200) + THRUST_BASE;
   
   //Error (P-type) Computation 
   float pitch_err = Pp*(pitchcmd - pitch);
@@ -746,7 +770,7 @@ void pid_update(float pitch, float roll, Keyboard* keypad, float yaw_reading){
   set_PWM(3,m3);
 
   //Print to file if Printing is true (set at runtime in terminal)
-  if(printing){
+  if(false){
     pFile = fopen("data.txt","a+");
     fprintf(pFile, "%f,%f,%f\n\r", YAWSETPOINT,yaw_m,yawcmd);
     fclose(pFile);
@@ -846,32 +870,85 @@ float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnabl
 }
 
 void vive_control(Keyboard* keypad){
+  alpha = 1.00;
+  
+
   //Read in Pitch, roll
   float pitch_JS = int((float(keypad->pitch)*(-0.0893))+11.4)*1.0;
   float roll_JS = int((float(keypad->roll)*(0.0893))-11.4)*1.0;
 
-  //EMA filter on x-y pos
-  vive_x_est = vive_x_est*betax +(1.0-betax)*x_now;
-  vive_y_est = vive_y_est*betay +(1.0-betay)*y_now;
-
-  //PID on X-Y pos
-  //For D-term, only update on new inputs
-  if(local_p.version != vive_hb_old){
+  //For D-term and filtered values
+  int hb_now = local_p.version;
+  if(hb_now != old_hb){
+    //EMA filter on x-y pos
+    vive_x_est = vive_x_est*betax +(1.0-betax)*x_now;
+    vive_y_est = vive_y_est*betay +(1.0-betay)*y_now;
     //Compute the derivative 
     vive_dx = vive_x_est - vive_x_est_old;
     vive_dy = vive_y_est - vive_y_est_old;
     //Store the old terms
     vive_x_est_old = vive_x_est;
     vive_y_est_old = vive_y_est;
+    //Store old
+    old_hb = hb_now;
   }
-
-  //when do I use the filter? In this loop or after it? Am I smoothing the pos
-  //or am I smoothing this output?
-  float vive_pos_control_x =   PXV*(x_pos_desired - vive_x_est) - DXV*(vive_dx);
-  float vive_pos_control_y = - PYV*(y_pos_desired - vive_y_est) - DYV*(vive_dy);
+  
+  //PID on X-Y pos
+  float vive_pos_control_x =  (PXV*(0.0 - vive_x_est) - DXV*(vive_dx));
+  float vive_pos_control_y = -(PYV*(0.0 - vive_y_est) - DYV*(vive_dy));
 
   //Blend the user command and the autonomy command using linear blending 
   //These are the variables updated in the primary PID loop. 
-  pitchcmd = pitch_JS;//alpha*vive_pos_control_y + (1.0 - alpha)*pitch_JS; 
+  pitchcmd = alpha*vive_pos_control_y + (1.0 - alpha)*pitch_JS; 
   rollcmd = alpha*vive_pos_control_x + (1.0 - alpha)*roll_JS;
+  //printf("%f,%f\n\r",pitchcmd, rollcmd);
+}
+
+void z_cont(Keyboard* keypad){
+  //Grab controller value
+  float th_controller = -((float(keypad->thrust)/128.0)*200);// + THRUST_BASE;
+  //Grab the height
+  float z_pos_vive_now = local_p.z - z_pos_desired;
+  //Get HB now
+  int hb_now = local_p.version;
+
+  //Compute Z mean
+  z_accel_sum += imu_data[5];
+  counter_z++;
+  
+  if(hb_now != old_hb_z){
+    //Store old filter value
+    v_est_old = v_est;
+    //update filter value and D-measure on hb change
+    imu_z = z_accel_sum / float(counter_z);
+    //reset the mean
+    counter_z = 1;
+    z_accel_sum = 0.0;
+    //Run the filter
+    v_est = A*(v_est + imu_z*K) + (1-A)*(z_pos_vive_now - prev_vive_z);
+    //Store the current as old
+    prev_vive_z = z_pos_vive_now;
+  }
+  //--- Implement the PID controller ---
+
+  //P Term 
+  float z_err = PVZ*(SETPOINTZ - z_pos_vive_now);
+
+  //I Term
+  z_int += z_err*PIZ;
+
+  //Integrator Wind Up Prevention
+  if(z_int > MAX_Iz){
+    z_int = MAX_Iz;
+  }
+  else if(z_int < -MAX_Iz){
+    z_int = -MAX_Iz;
+  }
+
+  //Superposition
+  float vive_control_z = z_err + z_int - PDZ*(v_est - v_est_old) ; 
+
+  //command thrust 
+  th = vive_control_z + th_controller + DESIREDTH;
+  //printf("%f,%f,%f\n\r",vive_control_z,th_controller,th);
 }
