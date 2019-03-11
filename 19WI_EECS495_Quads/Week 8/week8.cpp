@@ -221,10 +221,10 @@ float v_est_old = 0.0;
 #define K 50.0
 #define A 0.90
 //PID Params
-#define PPZ 0.045
-#define PIZ 0.005
-#define PDZ 2.00
-#define MAX_Iz 150
+float PPZ = 0.045;
+float PIZ = 0.0025;
+float PDZ = 8.5;
+float MAX_Iz = 300;
 //Shared Control
 #define DESIREDTH 1600
 
@@ -266,7 +266,7 @@ int main (int argc, char *argv[]){
   init_motor(3);
   delay(1000);
    //For reading in the parameters at startup
-  //read_in_params();
+  read_in_params();
   calibrate_imu();
   setup_keyboard();
   init_shared_memory();
@@ -781,23 +781,23 @@ void read_in_params(){
   float input;
   bool reading = true;
   while(reading){
-    puts("Param Selection:\n\r 0 for Py\n\r 1 for Iy\n\r 2 for Py_Vive\n\r 3 for Thrust_base\n\r 8 to exit/Default\n\r");
+    puts("Param Selection:\n\r 0 for P\n\r 1 for I\n\r 2 for D\n\r 3 for MAXI\n\r 8 to exit/Default\n\r");
     scanf("%f",&input);
     if(input == 0.0){
-      scanf("%f", &Py);
-      printf("Pr Set to: %f\n\r",Py);
+      scanf("%f", &PPZ);
+      printf("P Set to: %f\n\r",PPZ);
     }
     else if(input == 1.0){
-      scanf("%f", &Iy);
-      printf("Ir Set to: %f\n\r",Iy);
+      scanf("%f", &PIZ);
+      printf("I Set to: %f\n\r",PIZ);
     }
     else if(input == 2.0){
-      scanf("%f", &P_yaw_pos);
-      printf("P_yaw_pos Set to: %f\n\r",P_yaw_pos);
+      scanf("%f", &PDZ);
+      printf("D Set to: %f\n\r",PDZ);
     }
     else if(input == 3.0){
-      scanf("%f", &THRUST_BASE);
-      printf("THRUST_BASE Set to: %f\n\r",THRUST_BASE);
+      scanf("%f", &MAX_Iz);
+      printf("MAX_Iz Set to: %f\n\r",MAX_Iz);
     }
     else if(input == 4.0){
       scanf("%f", &A_CONST);
