@@ -217,16 +217,25 @@ float z_int = 0.0;
 float v_est = 0.0;
 float prev_vive_z = 0.0;
 float v_est_old = 0.0;
-#define SETPOINTZ 5200
+#define SETPOINTZ 5000
 #define K 50.0
-#define A 0.90
+#define A 0.95
 //PID Params
-float PPZ = 0.045;
-float PIZ = 0.0025;
-float PDZ = 8.5;
-float MAX_Iz = 300;
+float PPZ = 0.07;
+float PIZ = 0.003;
+float PDZ = 4.0;
+float MAX_Iz = 150;
 //Shared Control
-#define DESIREDTH 1600
+float DESIREDTH = 1500;
+
+//Outlier filter
+bool vive_first_xy = true;
+bool vive_first_z = true;
+float UB = 1.25;
+float LB = 0.75;
+
+float UBz = 1.25;
+float LBz = 0.75;
 
 //when ctrl+c pressed, kill motors
 void trap(int signal){
@@ -781,7 +790,7 @@ void read_in_params(){
   float input;
   bool reading = true;
   while(reading){
-    puts("Param Selection:\n\r 0 for P\n\r 1 for I\n\r 2 for D\n\r 3 for MAXI\n\r 8 to exit/Default\n\r");
+    puts("Param Selection:\n\r 0 for P\n\r 1 for I\n\r 2 for D\n\r 3 for MAXI\n\r 4 for THRUST\n\r 8 to exit/Default\n\r");
     scanf("%f",&input);
     if(input == 0.0){
       scanf("%f", &PPZ);
@@ -800,18 +809,9 @@ void read_in_params(){
       printf("MAX_Iz Set to: %f\n\r",MAX_Iz);
     }
     else if(input == 4.0){
-      scanf("%f", &A_CONST);
-      printf("A Set to: %f\n\r",A_CONST);
+      scanf("%f", &DESIREDTH);
+      printf("A Set to: %f\n\r",DESIREDTH);
      }
-    else if(input == 6.0){
-      scanf("%f", &MAX_Ir);
-      printf("Max I Set to: %f\n\r",MAX_Ir);
-    }
-    else if(input == 7.0){
-      puts("BOOL: 1 or 0 only\n\r");
-      scanf("%d", &printing);
-      printf("Printing Set to: %f\n\r",printing);
-    }
     else if(input == 8.0){
       reading = false;
       puts("Goodbye\n\r");
@@ -871,10 +871,10 @@ float yaw_control(Keyboard* keypad, float rotation, float vive_yaw, bool jsEnabl
 
 void vive_control(Keyboard* keypad){
   alpha = 1.00;
-  PXV = 0.015;
-  DXV = 0.5;
-  PYV = 0.015;
-  DYV = 0.5;
+  PXV = 0.015; //0.03
+  DXV = 0.35; //0.7
+  PYV = PXV;
+  DYV = DXV;
   betax = 0.8;
   betay = 0.8;
 
@@ -885,17 +885,42 @@ void vive_control(Keyboard* keypad){
   //For D-term and filtered values
   int hb_now = local_p.version;
   if(hb_now != old_hb){
-    //EMA filter on x-y pos
-    vive_x_est = betax*vive_x_est + (1.0-betax)*x_now;
-    vive_y_est = betay*vive_y_est + (1.0-betay)*y_now;
-    //Compute the derivative 
-    vive_dx = vive_x_est - vive_x_est_old;
-    vive_dy = vive_y_est - vive_y_est_old;
-    //Store the old terms
-    vive_x_est_old = vive_x_est;
-    vive_y_est_old = vive_y_est;
-    //Store old
-    old_hb = hb_now;
+    if(!vive_first_xy){
+        if(!(abs(x_now) > abs(vive_x_est)*UB) || !(abs(x_now) < abs(vive_x_est)*LB)){
+          //EMA filter on x-y pos
+          vive_x_est = betax*vive_x_est + (1.0-betax)*x_now;
+          //Compute the derivative 
+          vive_dx = vive_x_est - vive_x_est_old;
+          //Store the old terms
+          vive_x_est_old = vive_x_est;
+        }
+        //!(abs(y_now) > abs(vive_y_est)*1.10 || abs(y_now) < abs(vive_y_est)*0.90)
+        if((!(abs(y_now) > abs(vive_y_est)*UB) || !(abs(y_now) < abs(vive_y_est)*LB))) {
+          //EMA filter on x-y pos
+          vive_y_est = betay*vive_y_est + (1.0-betay)*y_now;
+          //Compute the derivative 
+          vive_dy = vive_y_est - vive_y_est_old;
+          //Store the old terms
+          vive_y_est_old = vive_y_est;
+        }
+      //Store old
+      old_hb = hb_now;
+    }
+    else{
+      //EMA filter on x-y pos
+      vive_x_est = betax*vive_x_est + (1.0-betax)*x_now;
+      vive_y_est = betay*vive_y_est + (1.0-betay)*y_now;
+      //Compute the derivative 
+      vive_dx = vive_x_est - vive_x_est_old;
+      vive_dy = vive_y_est - vive_y_est_old;
+      //Store the old terms
+      vive_x_est_old = vive_x_est;
+      vive_y_est_old = vive_y_est;
+      //Store old
+      old_hb = hb_now;
+      //first run fix
+      vive_first_xy = false;
+    }
   }
   
   //PID on X-Y pos
@@ -924,17 +949,36 @@ void z_cont(Keyboard* keypad){
   counter_z++;
   
   if(hb_now != old_hb_z){
-    //Store old filter value
-    v_est_old = v_est;
-    //update filter value and D-measure on hb change
-    imu_z = z_accel_sum / float(counter_z);
-    //reset the mean
-    counter_z = 1;
-    z_accel_sum = 0.0;
-    //Run the filter
-    v_est = A*(v_est + imu_z*K) + (1-A)*(z_pos_vive_now - prev_vive_z);
-    //Store the current as old
-    prev_vive_z = z_pos_vive_now;
+    if(!vive_first_z){
+      if(!(abs(z_pos_vive_now) > abs(v_est)*UBz) || !(abs(z_pos_vive_now) < abs(v_est)*LBz)){
+        //Store old filter value
+        v_est_old = v_est;
+        //update filter value and D-measure on hb change
+        imu_z = z_accel_sum / float(counter_z);
+        //reset the mean
+        counter_z = 1;
+        z_accel_sum = 0.0;
+        //Run the filter
+        v_est = A*(v_est + imu_z*K) + (1-A)*(z_pos_vive_now - prev_vive_z);
+        //Store the current as old
+        prev_vive_z = z_pos_vive_now;
+      }
+    }
+    else{
+      //Store old filter value
+      v_est_old = v_est;
+      //update filter value and D-measure on hb change
+      imu_z = z_accel_sum / float(counter_z);
+      //reset the mean
+      counter_z = 1;
+      z_accel_sum = 0.0;
+      //Run the filter
+      v_est = A*(v_est + imu_z*K) + (1-A)*(z_pos_vive_now - prev_vive_z);
+      //Store the current as old
+      prev_vive_z = z_pos_vive_now;
+      //First Run Fix, yo
+      vive_first_z = false;
+      }
   }
   //--- Implement the PID controller ---
 
@@ -956,6 +1000,5 @@ void z_cont(Keyboard* keypad){
   float vive_control_z = PPZ*z_err + z_int - PDZ*(v_est - v_est_old) ; 
 
   //command thrust 
-  th = vive_control_z + DESIREDTH;
-  //printf("%f,%f,%f,%f,%f\n\r", z_pos_vive_now, z_err, vive_control_z, z_int, th);
+  th = vive_control_z + th_controller + DESIREDTH;
 }

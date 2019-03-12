@@ -1,2 +1,4 @@
 #/bin/bash
-sshpass -p 'raspberry' ssh pi@quad 
+sshpass -p 'raspberry' ssh -t pi@quad 'cd flight_controller/; bash'
+
+EOF
